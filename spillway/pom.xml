@@ -12,7 +12,7 @@
 	<artifactId>spillway</artifactId>
 	<version>0.0.1</version>
 	<name>spillway</name>
-	<description>Demo project for Spring Boot</description>
+	<description>Server providing VOD streaming via HLS</description>
 	<url/>
 	<licenses>
 		<license/>
