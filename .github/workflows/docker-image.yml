@@ -14,7 +14,5 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: CD into project directory
-      run: cd ${{ github.workspace }}/spillway && ls
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag spillway:$(date +%s)
+      run: cd ${{ github.workspace }}/spillway && docker build . --file Dockerfile --tag spillway:$(date +%s)
