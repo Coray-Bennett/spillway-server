@@ -12,7 +12,7 @@
 	<artifactId>spillway</artifactId>
 	<version>0.0.1</version>
 	<name>spillway</name>
-	<description>Server providing VOD streaming via HLS</description>
+	<description>Server providing video upload and VOD streaming via HLS</description>
 	<url/>
 	<licenses>
 		<license/>
