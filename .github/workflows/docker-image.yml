@@ -15,4 +15,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
-      run: cd spillway && docker build . --file Dockerfile --tag spillway:$(date +%s)
+      run: cd ${{ github.workspace }}/spillway && docker build . --file Dockerfile --tag spillway:$(date +%s)
