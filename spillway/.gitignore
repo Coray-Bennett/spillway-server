@@ -5,6 +5,9 @@ HELP.md
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+*.m3u8
+*.ts
+
 ### STS ###
 .apt_generated
 .classpath
