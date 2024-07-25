@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/video")
 public class VideoController {
-    final private String CONTENT_PATH_PREFIX = "src/main/java/com/coraybennett/spillway/content/";
+    final private String CONTENT_PATH_PREFIX = "content/";
 
     @GetMapping("/{tag}.m3u8")
     public ResponseEntity<ByteArrayResource> getVideo(@PathVariable String tag) throws IOException {
