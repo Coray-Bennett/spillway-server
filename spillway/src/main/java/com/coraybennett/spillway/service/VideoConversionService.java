@@ -1,6 +1,7 @@
 package com.coraybennett.spillway.service;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,8 +13,6 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.UUID;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,7 +20,6 @@ import com.coraybennett.spillway.exception.VideoConversionException;
 
 @Service
 public class VideoConversionService {
-    Logger logger = LoggerFactory.getLogger(VideoConversionService.class);
     private final String OUTPUT_DIRECTORY = "content/";
     private final String VIDEO_ROUTE_PREFIX = "http://127.0.0.1:8081/video/";
 
@@ -63,7 +61,16 @@ public class VideoConversionService {
                 throw new VideoConversionException("FFmpeg conversion failed with exit code: " + exitCode);
             }
 
-            File playlist = new File(outputPlaylist);
+            processPlaylistFile(outputPlaylist, uuid);
+
+            return uuid;
+        } catch (IOException | InterruptedException e) {
+            throw new VideoConversionException("Error converting video file", e);
+        }
+    }
+
+    private void processPlaylistFile(String path, String uuid) throws FileNotFoundException, IOException {
+        File playlist = new File(path);
             List<String> processedPlaylist;
             try (Scanner scanner = new Scanner(playlist)) {
                 processedPlaylist = new ArrayList<>();
@@ -82,10 +89,5 @@ public class VideoConversionService {
                     writer.write(line + "\n");
                 }
             }
-
-            return uuid;
-        } catch (IOException | InterruptedException e) {
-            throw new VideoConversionException("Error converting video file", e);
-        }
     }
 }
