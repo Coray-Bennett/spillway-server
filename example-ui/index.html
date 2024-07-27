@@ -3,6 +3,7 @@
     <head>
         <meta charset="utf-8" />
         <title>Spillway</title>
+        <script src="index.js"></script>
     </head>
 
     <body>
@@ -14,6 +15,12 @@
         <video id='hls-example'  class="video-js vjs-default-skin" width="400" height="300" controls>
         <source type="application/x-mpegURL" src="http://localhost:8081/video/dune.m3u8">
         </video>
+
+        <form action="http://localhost:8081/upload/single" method="post" enctype="multipart/form-data">
+            <label for="file">File</label>
+            <input id="file" name="file" type="file" />
+            <button>Upload</button>
+        </form>
         
         
         <!-- JS code -->
