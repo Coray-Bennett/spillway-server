@@ -1,0 +1,38 @@
+package com.coraybennett.spillway.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.coraybennett.spillway.exception.VideoConversionException;
+import com.coraybennett.spillway.service.VideoConversionService;
+
+@RestController
+public class FileUploadController {
+    private final VideoConversionService videoConversionService;
+
+    @Autowired
+    public FileUploadController(VideoConversionService videoConversionService) {
+        this.videoConversionService = videoConversionService;
+    }
+
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<String> uploadVideo(@RequestParam("file") MultipartFile videoFile) {
+        try {
+            // Call the service to convert the video file
+            videoConversionService.convertToHls(videoFile);
+            return ResponseEntity.ok("Video file uploaded and converted successfully!");
+        } catch (VideoConversionException e) {
+            // Handle conversion failures
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Error converting video file: " + e.getMessage());
+        } catch (Exception e) {
+            // Handle any other exceptions
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Internal Server Error: " + e.getMessage());
+        }
+    }
+}
