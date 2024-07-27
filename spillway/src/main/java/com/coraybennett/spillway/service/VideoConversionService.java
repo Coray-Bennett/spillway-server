@@ -25,18 +25,15 @@ public class VideoConversionService {
 
     public String convertToHls(MultipartFile videoFile) throws VideoConversionException {
         try {
-            // Generate a UUID for unique file names
             String uuid = UUID.randomUUID().toString();
             Path outputPath = Paths.get(OUTPUT_DIRECTORY, uuid);
             Files.createDirectory(outputPath);
 
-            // Original file path
             Path inputPath = Paths.get(outputPath.toString(), videoFile.getOriginalFilename());
             Files.copy(videoFile.getInputStream(), inputPath, StandardCopyOption.REPLACE_EXISTING);
 
             String outputPlaylist = outputPath.toAbsolutePath().toString() + "/" + uuid + ".m3u8";
 
-            // Convert the video to HLS format using ffmpeg
             String ffmpegCommand = String.format(
                 """
                 ffmpeg -i %s 
