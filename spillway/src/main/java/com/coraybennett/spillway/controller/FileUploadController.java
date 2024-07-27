@@ -26,14 +26,11 @@ public class FileUploadController {
     @PostMapping(value = "/single", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> uploadVideo(@RequestParam("file") MultipartFile videoFile) {
         try {
-            // Call the service to convert the video file
             String uuid = videoConversionService.convertToHls(videoFile);
             return ResponseEntity.ok(uuid);
         } catch (VideoConversionException e) {
-            // Handle conversion failures
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Error converting video file: " + e.getMessage());
         } catch (Exception e) {
-            // Handle any other exceptions
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Internal Server Error: " + e.getMessage());
         }
     }
