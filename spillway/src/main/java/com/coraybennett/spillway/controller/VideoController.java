@@ -30,12 +30,12 @@ public class VideoController {
         try {
             ByteArrayResource playlist = fileToByteArrayResource(CONTENT_PATH_PREFIX + String.format("%s/%s", tag, playlistFile));
             if(playlist == null) {
-                return new ResponseEntity<>(new ByteArrayResource(new byte[]{}), HttpStatus.NOT_FOUND);
+                return ResponseEntity.notFound().build();
             }
 
             return new ResponseEntity<>(playlist, headers, HttpStatus.OK);
         } catch (IOException e) {
-            return new ResponseEntity<>(new ByteArrayResource(new byte[]{}), HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseEntity.internalServerError().build();
         }
     }
 
@@ -51,16 +51,16 @@ public class VideoController {
         try {
             ByteArrayResource tsVideo = fileToByteArrayResource(CONTENT_PATH_PREFIX + String.format("%s/%s", tag, filename));
             if(tsVideo == null) {
-                return new ResponseEntity<>(new ByteArrayResource(new byte[]{}), HttpStatus.NOT_FOUND);
+                return ResponseEntity.notFound().build();
             }
 
             return new ResponseEntity<>(tsVideo, headers, HttpStatus.OK);
         } catch (IOException e) {
-            return new ResponseEntity<>(new ByteArrayResource(new byte[]{}), HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseEntity.internalServerError().build();
         }
     }
 
-    private ByteArrayResource fileToByteArrayResource(String path) throws IOException {
+    ByteArrayResource fileToByteArrayResource(String path) throws IOException {
         File file = new File(path);
         if(!file.exists()) {
             return null;
