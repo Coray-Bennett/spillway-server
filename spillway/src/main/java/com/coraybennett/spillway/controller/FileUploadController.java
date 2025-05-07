@@ -21,14 +21,26 @@ public class FileUploadController {
         this.videoService = videoService;
     }
 
-    @PostMapping(value = "/video", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> uploadVideo(
-            @RequestPart("file") MultipartFile videoFile,
-            @RequestPart("metadata") VideoUploadRequest metadata) {
+    // Step 1: Create video metadata and get UUID immediately
+    @PostMapping("/video/metadata")
+    public ResponseEntity<VideoResponse> createVideoMetadata(@RequestBody VideoUploadRequest metadata) {
+        try {
+            VideoResponse response = videoService.createVideo(metadata);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // Step 2: Upload the actual video file
+    @PostMapping(value = "/video/{videoId}/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadVideoFile(
+            @PathVariable String videoId,
+            @RequestParam("file") MultipartFile videoFile) {
         
         try {
-            VideoResponse response = videoService.uploadAndConvertVideo(videoFile, metadata);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+            videoService.uploadAndConvertVideo(videoId, videoFile);
+            return ResponseEntity.accepted().build(); // 202 - Processing started
         } catch (VideoConversionException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Error converting video file: " + e.getMessage());

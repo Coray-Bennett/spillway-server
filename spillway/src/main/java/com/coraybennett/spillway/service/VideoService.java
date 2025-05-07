@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.*;
+import java.nio.file.StandardCopyOption;
 import java.util.Optional;
 
 @Service
@@ -25,6 +28,9 @@ public class VideoService {
     @Value("${server.base-url:http://localhost:8081}")
     private String baseUrl;
 
+    @Value("${video.upload-temp-dir:temp/uploads}")
+    private String tempUploadDir;
+
     @Autowired
     public VideoService(VideoConversionService videoConversionService, 
                        VideoRepository videoRepository, 
@@ -35,10 +41,7 @@ public class VideoService {
     }
 
     @Transactional
-    public VideoResponse uploadAndConvertVideo(MultipartFile videoFile, VideoUploadRequest metadata) 
-            throws VideoConversionException {
-        
-        // Create video entity
+    public VideoResponse createVideo(VideoUploadRequest metadata) {
         Video video = new Video();
         video.setTitle(metadata.getTitle());
         video.setType(metadata.getType());
@@ -49,7 +52,7 @@ public class VideoService {
         video.setEpisodeNumber(metadata.getEpisodeNumber());
         video.setConversionStatus(ConversionStatus.PENDING);
         
-        // Initially set a placeholder URL - will be updated after conversion
+        // Set placeholder URL that will be updated after conversion
         video.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, "pending"));
         
         // Add to playlist if provided
@@ -58,17 +61,51 @@ public class VideoService {
             playlist.ifPresent(video::setPlaylist);
         }
         
-        // Save video first to get the ID
+        // Save video to get the ID
         Video savedVideo = videoRepository.save(video);
         
-        // Update playlist URL with actual ID
+        // Update with actual URL
         savedVideo.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, savedVideo.getId()));
         savedVideo = videoRepository.save(savedVideo);
         
-        // Start async conversion
-        videoConversionService.convertToHls(videoFile, savedVideo);
-        
         return new VideoResponse(savedVideo);
+    }
+
+    @Transactional
+    public void uploadAndConvertVideo(String videoId, MultipartFile videoFile) 
+            throws VideoConversionException {
+        
+        Video video = videoRepository.findById(videoId)
+                .orElseThrow(() -> new VideoConversionException("Video not found: " + videoId));
+        
+        // Save the file to a temporary location immediately
+        Path tempFile = null;
+        try {
+            // Create temp directory if it doesn't exist
+            Path tempDir = Paths.get(tempUploadDir);
+            Files.createDirectories(tempDir);
+            
+            // Create a temporary file to store the upload
+            String tempFileName = videoId + "_" + sanitizeFilename(videoFile.getOriginalFilename());
+            tempFile = tempDir.resolve(tempFileName);
+            
+            // Copy the uploaded file to the temporary location
+            Files.copy(videoFile.getInputStream(), tempFile, StandardCopyOption.REPLACE_EXISTING);
+            
+            // Start async conversion with the temporary file path
+            videoConversionService.convertToHls(tempFile, video);
+            
+        } catch (IOException e) {
+            // Clean up temp file if it was created
+            if (tempFile != null) {
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (IOException ex) {
+                    System.out.println("Failed to delete temp file after error" + ex.getMessage());
+                }
+            }
+            throw new VideoConversionException("Failed to save uploaded file", e);
+        }
     }
 
     public Optional<Video> getVideoById(String id) {
@@ -87,6 +124,13 @@ public class VideoService {
             v.getConversionProgress(),
             v.getConversionError()
         );
+    }
+
+    private String sanitizeFilename(String filename) {
+        if (filename == null) {
+            return "upload.mp4";
+        }
+        return filename.replaceAll("[^a-zA-Z0-9.-]", "_");
     }
     
     public static record ConversionProgress(

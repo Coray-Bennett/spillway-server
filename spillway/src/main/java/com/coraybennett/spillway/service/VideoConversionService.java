@@ -10,13 +10,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
@@ -40,9 +38,8 @@ public class VideoConversionService {
     }
 
     @Async("videoConversionExecutor")
-    public CompletableFuture<Void> convertToHls(MultipartFile videoFile, Video video) {
+    public CompletableFuture<Void> convertToHls(Path sourceFile, Video video) {
         Path outputPath = null;
-        Path inputPath = null;
         
         try {
             // Update status to IN_PROGRESS
@@ -53,14 +50,10 @@ public class VideoConversionService {
             outputPath = Paths.get(OUTPUT_DIRECTORY, video.getId());
             Files.createDirectories(outputPath);
             
-            // Save input file
-            inputPath = Paths.get(outputPath.toString(), sanitizeFilename(videoFile.getOriginalFilename()));
-            Files.copy(videoFile.getInputStream(), inputPath, StandardCopyOption.REPLACE_EXISTING);
-            
             String outputPlaylist = outputPath.toAbsolutePath().toString() + File.separator + video.getId() + ".m3u8";
             
-            // Build FFmpeg command
-            List<String> command = buildFfmpegCommand(inputPath.toString(), outputPlaylist);
+            // Build FFmpeg command with the source file path
+            List<String> command = buildFfmpegCommand(sourceFile.toAbsolutePath().toString(), outputPlaylist);
             
             logger.info("Starting FFmpeg conversion for video: {}", video.getId());
             
@@ -73,8 +66,8 @@ public class VideoConversionService {
             
             int exitCode = process.waitFor();
             
-            // Clean up input file
-            Files.deleteIfExists(inputPath);
+            // Clean up the temporary source file
+            Files.deleteIfExists(sourceFile);
             
             if (exitCode != 0) {
                 throw new VideoConversionException("FFmpeg conversion failed with exit code: " + exitCode);
@@ -97,7 +90,7 @@ public class VideoConversionService {
             logger.error("Error during video conversion", e);
             
             // Clean up resources on error
-            cleanupOnError(inputPath, outputPath);
+            cleanupOnError(sourceFile, outputPath);
             
             // Update video status to failed
             video.setConversionStatus(ConversionStatus.FAILED);
@@ -196,13 +189,6 @@ public class VideoConversionService {
                 writer.write(line + "\n");
             }
         }
-    }
-    
-    private String sanitizeFilename(String filename) {
-        if (filename == null) {
-            return "input.mp4";
-        }
-        return filename.replaceAll("[^a-zA-Z0-9.-]", "_");
     }
     
     private void cleanupOnError(Path inputPath, Path outputPath) {
