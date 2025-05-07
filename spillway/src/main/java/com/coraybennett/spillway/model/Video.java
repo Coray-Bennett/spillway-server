@@ -20,6 +20,14 @@ public class Video {
     @Column(nullable = false)
     private VideoType type;
     
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ConversionStatus conversionStatus = ConversionStatus.PENDING;
+    
+    private Integer conversionProgress = 0; // 0-100 percentage
+    
+    private String conversionError;
+    
     @Column(nullable = false)
     private Integer length; // in seconds
     
@@ -31,8 +39,6 @@ public class Video {
     
     @Column(nullable = false)
     private Integer episodeNumber;
-    
-    private String tag; // UUID from file system
     
     @ManyToOne
     @JoinColumn(name = "playlist_id")
@@ -86,6 +92,30 @@ public class Video {
         this.type = type;
     }
 
+    public ConversionStatus getConversionStatus() {
+        return conversionStatus;
+    }
+
+    public void setConversionStatus(ConversionStatus conversionStatus) {
+        this.conversionStatus = conversionStatus;
+    }
+
+    public Integer getConversionProgress() {
+        return conversionProgress;
+    }
+
+    public void setConversionProgress(Integer conversionProgress) {
+        this.conversionProgress = conversionProgress;
+    }
+
+    public String getConversionError() {
+        return conversionError;
+    }
+
+    public void setConversionError(String conversionError) {
+        this.conversionError = conversionError;
+    }
+
     public Integer getLength() {
         return length;
     }
@@ -124,14 +154,6 @@ public class Video {
 
     public void setEpisodeNumber(Integer episodeNumber) {
         this.episodeNumber = episodeNumber;
-    }
-
-    public String getTag() {
-        return tag;
-    }
-
-    public void setTag(String tag) {
-        this.tag = tag;
     }
 
     public Playlist getPlaylist() {
