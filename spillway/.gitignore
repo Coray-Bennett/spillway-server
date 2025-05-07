@@ -8,6 +8,8 @@ HELP.md
 *.m3u8
 *.ts
 
+/content/*
+
 ### STS ###
 .apt_generated
 .classpath

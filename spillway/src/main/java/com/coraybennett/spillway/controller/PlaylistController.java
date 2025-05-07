@@ -1,6 +1,5 @@
 package com.coraybennett.spillway.controller;
 
-import com.coraybennett.spillway.exception.VideoConversionException;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.PlaylistRepository;
