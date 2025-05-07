@@ -33,23 +33,36 @@ public class VideoController {
                     .orElse(ResponseEntity.notFound().build());
     }
     
+    @GetMapping("/{id}/status")
+    public ResponseEntity<?> getConversionStatus(@PathVariable String id) {
+        VideoService.ConversionProgress progress = videoService.getConversionProgress(id);
+        if (progress == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(progress);
+    }
+    
     @GetMapping("/{id}/playlist")
     public ResponseEntity<ByteArrayResource> getVideoPlaylist(@PathVariable String id) throws IOException {
         Optional<Video> video = videoService.getVideoById(id);
         if (video.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
+        
+        // Check if conversion is complete
+        if (video.get().getConversionStatus() != com.coraybennett.spillway.model.ConversionStatus.COMPLETED) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED).build(); // 202 - Processing
+        }
 
-        String tag = video.get().getTag();
-        String playlistFile = tag + ".m3u8";
+        String playlistFile = id + ".m3u8";
         
         final HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("application/vnd.apple.mpegurl"));
-        headers.set("Content-Disposition", "attachment;filename=" + playlistFile);
+        headers.set("Content-Disposition", "inline;filename=" + playlistFile);
         
         try {
             ByteArrayResource playlist = fileToByteArrayResource(
-                CONTENT_PATH_PREFIX + String.format("%s/%s", tag, playlistFile));
+                CONTENT_PATH_PREFIX + String.format("%s/%s", id, playlistFile));
             
             if (playlist == null) {
                 return ResponseEntity.notFound().build();
@@ -70,16 +83,14 @@ public class VideoController {
         if (video.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-
-        String tag = video.get().getTag();
         
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Content-Type", "application/vnd.apple.mpegurl");
-        headers.set("Content-Disposition", "attachment;filename=" + filename);
+        headers.set("Content-Type", "video/mp2t"); // Correct content type for .ts files
+        headers.set("Content-Disposition", "inline;filename=" + filename);
         
         try {
             ByteArrayResource tsVideo = fileToByteArrayResource(
-                CONTENT_PATH_PREFIX + String.format("%s/%s", tag, filename));
+                CONTENT_PATH_PREFIX + String.format("%s/%s", id, filename));
             
             if (tsVideo == null) {
                 return ResponseEntity.notFound().build();
