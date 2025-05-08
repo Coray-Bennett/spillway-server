@@ -10,7 +10,7 @@ public class VideoUploadRequest {
     private String description;
     private Integer seasonNumber;
     private Integer episodeNumber;
-    private String playlistId; // Optional
+    private String playlistId;
 
     public VideoUploadRequest(String title, VideoType type, Integer length, String genre, String description,
             Integer seasonNumber, Integer episodeNumber, String playlistId) {

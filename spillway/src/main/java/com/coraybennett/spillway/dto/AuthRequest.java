@@ -3,9 +3,8 @@ package com.coraybennett.spillway.dto;
 public class AuthRequest {
     private String username;
     private String password;
-    private String email; // For registration
+    private String email;
 
-    // Constructors, getters, and setters
     public AuthRequest() {}
 
     public String getUsername() { return username; }

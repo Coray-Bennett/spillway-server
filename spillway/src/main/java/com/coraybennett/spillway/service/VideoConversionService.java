@@ -1,17 +1,10 @@
 package com.coraybennett.spillway.service;
 
-import com.coraybennett.spillway.exception.VideoConversionException;
-import com.coraybennett.spillway.model.Video;
-import com.coraybennett.spillway.model.ConversionStatus;
-import com.coraybennett.spillway.repository.VideoRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Service;
-
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -21,6 +14,18 @@ import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+
+import com.coraybennett.spillway.exception.VideoConversionException;
+import com.coraybennett.spillway.model.ConversionStatus;
+import com.coraybennett.spillway.model.Video;
+import com.coraybennett.spillway.repository.VideoRepository;
 
 @Service
 public class VideoConversionService {
@@ -42,17 +47,12 @@ public class VideoConversionService {
         Path outputPath = null;
         
         try {
-            // Update status to IN_PROGRESS
             video.setConversionStatus(ConversionStatus.IN_PROGRESS);
             videoRepository.save(video);
             
-            // Create output directory using video ID
             outputPath = Paths.get(OUTPUT_DIRECTORY, video.getId());
             Files.createDirectories(outputPath);
-            
             String outputPlaylist = outputPath.toAbsolutePath().toString() + File.separator + video.getId() + ".m3u8";
-            
-            // Build FFmpeg command with the source file path
             List<String> command = buildFfmpegCommand(sourceFile.toAbsolutePath().toString(), outputPlaylist);
             
             logger.info("Starting FFmpeg conversion for video: {}", video.getId());
@@ -63,10 +63,7 @@ public class VideoConversionService {
             // Parse FFmpeg output for progress
             BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
             parseFFmpegOutput(errorReader, video);
-            
             int exitCode = process.waitFor();
-            
-            // Clean up the temporary source file
             Files.deleteIfExists(sourceFile);
             
             if (exitCode != 0) {
@@ -86,13 +83,11 @@ public class VideoConversionService {
             
             return CompletableFuture.completedFuture(null);
             
-        } catch (Exception e) {
+        } catch (VideoConversionException | IOException | InterruptedException e) {
             logger.error("Error during video conversion", e);
             
-            // Clean up resources on error
             cleanupOnError(sourceFile, outputPath);
             
-            // Update video status to failed
             video.setConversionStatus(ConversionStatus.FAILED);
             video.setConversionError(e.getMessage());
             videoRepository.save(video);
@@ -131,7 +126,6 @@ public class VideoConversionService {
         
         try {
             while ((line = reader.readLine()) != null) {
-                // Extract total duration
                 Matcher durationMatcher = durationPattern.matcher(line);
                 if (durationMatcher.find()) {
                     totalSeconds = parseTimeToSeconds(
@@ -141,7 +135,6 @@ public class VideoConversionService {
                     );
                 }
                 
-                // Extract current progress
                 Matcher progressMatcher = progressPattern.matcher(line);
                 if (progressMatcher.find() && totalSeconds > 0) {
                     double currentSeconds = parseTimeToSeconds(

@@ -35,38 +35,49 @@ public class FileUploadController {
     }
 
     @PostMapping("/video/metadata")
-        public ResponseEntity<VideoResponse> createVideoMetadata(
-                @RequestBody VideoUploadRequest metadata,
-                Principal principal) {
-            try {
-                User user = userRepository.findByUsername(principal.getName())
-                        .orElseThrow(() -> new RuntimeException("User not found"));
-                
-                VideoResponse response = videoService.createVideo(metadata, user);
-                return ResponseEntity.status(HttpStatus.CREATED).body(response);
-            } catch (Exception e) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-            }
+    public ResponseEntity<VideoResponse> createVideoMetadata( 
+        @RequestBody VideoUploadRequest metadata,
+        Principal principal
+    ) {
+        try {
+            User user = userRepository.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            VideoResponse response = videoService.createVideo(metadata, user);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
 
     @PostMapping(value = "/video/{videoId}/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-        public ResponseEntity<?> uploadVideoFile(
-                @PathVariable String videoId,
-                @RequestParam("file") MultipartFile videoFile,
-                Principal principal) {
-            
-            try {
-                User user = userRepository.findByUsername(principal.getName())
-                        .orElseThrow(() -> new RuntimeException("User not found"));
-                
-                videoService.uploadAndConvertVideo(videoId, videoFile);
-                return ResponseEntity.accepted().build();
-            } catch (VideoConversionException e) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Error converting video file: " + e.getMessage());
-            } catch (Exception e) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body("Internal Server Error: " + e.getMessage());
+    public ResponseEntity<?> uploadVideoFile(
+            @PathVariable String videoId,
+            @RequestParam("file") MultipartFile videoFile,
+            Principal principal
+    ) {
+        try {
+            if(!videoService.getVideoById(videoId).isPresent()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Video with id " + videoId + " not found.");
             }
+            
+            User user = userRepository.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            String uploaderId = videoService.getVideoById(videoId).get().getUploadedBy().getId(); 
+            if(!uploaderId.equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body("User ID " + user.getId() + " does not match uploader ID " + uploaderId);
+            }
+
+            videoService.uploadAndConvertVideo(videoId, videoFile);
+            return ResponseEntity.accepted().build();
+        } catch (VideoConversionException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Error converting video file: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Internal Server Error: " + e.getMessage());
         }
+    }
 }

@@ -36,9 +36,11 @@ public class VideoService {
     private String tempUploadDir;
 
     @Autowired
-    public VideoService(VideoConversionService videoConversionService, 
-                       VideoRepository videoRepository, 
-                       PlaylistRepository playlistRepository) {
+    public VideoService(
+        VideoConversionService videoConversionService, 
+        VideoRepository videoRepository, 
+        PlaylistRepository playlistRepository
+    ) {
         this.videoConversionService = videoConversionService;
         this.videoRepository = videoRepository;
         this.playlistRepository = playlistRepository;
@@ -57,19 +59,14 @@ public class VideoService {
         video.setConversionStatus(ConversionStatus.PENDING);
         video.setUploadedBy(user);
         
-        // Set placeholder URL that will be updated after conversion
         video.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, "pending"));
         
-        // Add to playlist if provided
         if (metadata.getPlaylistId() != null) {
             Optional<Playlist> playlist = playlistRepository.findById(metadata.getPlaylistId());
             playlist.ifPresent(video::setPlaylist);
         }
         
-        // Save video to get the ID
         Video savedVideo = videoRepository.save(video);
-        
-        // Update with actual URL
         savedVideo.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, savedVideo.getId()));
         savedVideo = videoRepository.save(savedVideo);
         
@@ -83,25 +80,18 @@ public class VideoService {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new VideoConversionException("Video not found: " + videoId));
         
-        // Save the file to a temporary location immediately
         Path tempFile = null;
         try {
-            // Create temp directory if it doesn't exist
             Path tempDir = Paths.get(tempUploadDir);
             Files.createDirectories(tempDir);
             
-            // Create a temporary file to store the upload
             String tempFileName = videoId + "_" + sanitizeFilename(videoFile.getOriginalFilename());
             tempFile = tempDir.resolve(tempFileName);
             
-            // Copy the uploaded file to the temporary location
             Files.copy(videoFile.getInputStream(), tempFile, StandardCopyOption.REPLACE_EXISTING);
-            
-            // Start async conversion with the temporary file path
             videoConversionService.convertToHls(tempFile, video);
             
         } catch (IOException e) {
-            // Clean up temp file if it was created
             if (tempFile != null) {
                 try {
                     Files.deleteIfExists(tempFile);

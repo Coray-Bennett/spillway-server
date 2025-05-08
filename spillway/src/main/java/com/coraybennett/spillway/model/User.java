@@ -29,7 +29,6 @@ public class User {
     @OneToMany(mappedBy = "uploadedBy")
     private List<Video> uploadedVideos;
 
-    // Constructors, getters, and setters
     public User() {}
 
     public User(String username, String password, String email) {
