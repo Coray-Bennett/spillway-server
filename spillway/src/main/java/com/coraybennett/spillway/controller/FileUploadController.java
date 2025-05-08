@@ -1,15 +1,25 @@
 package com.coraybennett.spillway.controller;
 
-import com.coraybennett.spillway.dto.VideoUploadRequest;
-import com.coraybennett.spillway.dto.VideoResponse;
-import com.coraybennett.spillway.exception.VideoConversionException;
-import com.coraybennett.spillway.service.VideoService;
+import java.security.Principal;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import com.coraybennett.spillway.dto.VideoResponse;
+import com.coraybennett.spillway.dto.VideoUploadRequest;
+import com.coraybennett.spillway.exception.VideoConversionException;
+import com.coraybennett.spillway.model.User;
+import com.coraybennett.spillway.repository.UserRepository;
+import com.coraybennett.spillway.service.VideoService;
 
 @RestController
 @RequestMapping("/upload")
@@ -17,36 +27,46 @@ public class FileUploadController {
     private final VideoService videoService;
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
     public FileUploadController(VideoService videoService) {
         this.videoService = videoService;
     }
 
-    // Step 1: Create video metadata and get UUID immediately
     @PostMapping("/video/metadata")
-    public ResponseEntity<VideoResponse> createVideoMetadata(@RequestBody VideoUploadRequest metadata) {
-        try {
-            VideoResponse response = videoService.createVideo(metadata);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        public ResponseEntity<VideoResponse> createVideoMetadata(
+                @RequestBody VideoUploadRequest metadata,
+                Principal principal) {
+            try {
+                User user = userRepository.findByUsername(principal.getName())
+                        .orElseThrow(() -> new RuntimeException("User not found"));
+                
+                VideoResponse response = videoService.createVideo(metadata, user);
+                return ResponseEntity.status(HttpStatus.CREATED).body(response);
+            } catch (Exception e) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
         }
-    }
 
-    // Step 2: Upload the actual video file
     @PostMapping(value = "/video/{videoId}/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> uploadVideoFile(
-            @PathVariable String videoId,
-            @RequestParam("file") MultipartFile videoFile) {
-        
-        try {
-            videoService.uploadAndConvertVideo(videoId, videoFile);
-            return ResponseEntity.accepted().build(); // 202 - Processing started
-        } catch (VideoConversionException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body("Error converting video file: " + e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Internal Server Error: " + e.getMessage());
+        public ResponseEntity<?> uploadVideoFile(
+                @PathVariable String videoId,
+                @RequestParam("file") MultipartFile videoFile,
+                Principal principal) {
+            
+            try {
+                User user = userRepository.findByUsername(principal.getName())
+                        .orElseThrow(() -> new RuntimeException("User not found"));
+                
+                videoService.uploadAndConvertVideo(videoId, videoFile);
+                return ResponseEntity.accepted().build();
+            } catch (VideoConversionException e) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("Error converting video file: " + e.getMessage());
+            } catch (Exception e) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("Internal Server Error: " + e.getMessage());
+            }
         }
-    }
 }

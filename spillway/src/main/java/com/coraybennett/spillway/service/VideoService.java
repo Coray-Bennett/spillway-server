@@ -1,23 +1,27 @@
 package com.coraybennett.spillway.service;
 
-import com.coraybennett.spillway.dto.VideoResponse;
-import com.coraybennett.spillway.dto.VideoUploadRequest;
-import com.coraybennett.spillway.exception.VideoConversionException;
-import com.coraybennett.spillway.model.ConversionStatus;
-import com.coraybennett.spillway.model.Playlist;
-import com.coraybennett.spillway.model.Video;
-import com.coraybennett.spillway.repository.PlaylistRepository;
-import com.coraybennett.spillway.repository.VideoRepository;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Optional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.file.*;
-import java.nio.file.StandardCopyOption;
-import java.util.Optional;
+import com.coraybennett.spillway.dto.VideoResponse;
+import com.coraybennett.spillway.dto.VideoUploadRequest;
+import com.coraybennett.spillway.exception.VideoConversionException;
+import com.coraybennett.spillway.model.ConversionStatus;
+import com.coraybennett.spillway.model.Playlist;
+import com.coraybennett.spillway.model.User;
+import com.coraybennett.spillway.model.Video;
+import com.coraybennett.spillway.repository.PlaylistRepository;
+import com.coraybennett.spillway.repository.VideoRepository;
 
 @Service
 public class VideoService {
@@ -41,7 +45,7 @@ public class VideoService {
     }
 
     @Transactional
-    public VideoResponse createVideo(VideoUploadRequest metadata) {
+    public VideoResponse createVideo(VideoUploadRequest metadata, User user) {
         Video video = new Video();
         video.setTitle(metadata.getTitle());
         video.setType(metadata.getType());
@@ -51,6 +55,7 @@ public class VideoService {
         video.setSeasonNumber(metadata.getSeasonNumber());
         video.setEpisodeNumber(metadata.getEpisodeNumber());
         video.setConversionStatus(ConversionStatus.PENDING);
+        video.setUploadedBy(user);
         
         // Set placeholder URL that will be updated after conversion
         video.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, "pending"));
