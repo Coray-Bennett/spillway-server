@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21
+FROM eclipse-temurin:latest
 RUN ["apt-get", "update", "-qq"]
 RUN ["apt-get", "install", "ffmpeg", "-y"]
 COPY conten[t] content
