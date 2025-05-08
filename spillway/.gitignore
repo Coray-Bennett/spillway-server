@@ -1,12 +1,13 @@
 HELP.md
 /target/*
-!target/*.jar
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
 *.m3u8
 *.ts
+
+/content/*
 
 ### STS ###
 .apt_generated
@@ -35,3 +36,5 @@ build/
 
 ### VS Code ###
 .vscode/
+
+context.ignore
