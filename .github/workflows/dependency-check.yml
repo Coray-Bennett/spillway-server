@@ -2,55 +2,57 @@ name: Dependency Check
 
 on:
   schedule:
-    - cron: '0 0 * * 1'  # Weekly on Monday
-  workflow_dispatch:  # Manual trigger
+    # Run weekly on Monday at 3 AM UTC
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
 
 jobs:
-  dependency-check-backend:
-    name: Backend Dependency Check
+  backend-dependencies:
     runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@v4
     
     - name: Set up JDK 17
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-        
-    - name: Run OWASP Dependency Check
+        cache: maven
+    
+    - name: Check for dependency updates
       working-directory: ./spillway
-      run: |
-        mvn org.owasp:dependency-check-maven:check
-      continue-on-error: true
-      
+      run: mvn versions:display-dependency-updates
+    
+    - name: OWASP Dependency Check
+      working-directory: ./spillway
+      run: mvn dependency-check:check
+    
     - name: Upload dependency check report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: backend-dependency-report
+        name: dependency-check-report
         path: spillway/target/dependency-check-report.html
+        retention-days: 30
 
-  dependency-check-frontend:
-    name: Frontend Dependency Audit
+  frontend-dependencies:
     runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
+    - name: Use Node.js
+      uses: actions/setup-node@v4
       with:
-        node-version: '18'
-        
-    - name: Run npm audit
-      working-directory: ./spillway-frontend
-      run: |
-        npm audit --audit-level=high
-      continue-on-error: true
-      
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: spillway-frontend/package-lock.json
+    
     - name: Check for outdated packages
       working-directory: ./spillway-frontend
-      run: npm outdated
-      continue-on-error: true
+      run: npm outdated || true
+    
+    - name: Audit dependencies
+      working-directory: ./spillway-frontend
+      run: npm audit --production
