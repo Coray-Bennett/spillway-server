@@ -20,9 +20,55 @@
         </div>
         
         <div class="video-details">
-          <h1 class="video-title">{{ videoId }}</h1>
-          <p>Playlist URL: {{ playlistUrl }}</p>
-          <button @click="loadVideo" class="btn btn-primary">Load Video</button>
+          <h1 class="video-title">{{ videoMetadata?.title || videoId }}</h1>
+          <p v-if="!videoMetadata">Playlist URL: {{ playlistUrl }}</p>
+          
+          <div v-if="videoMetadata" class="video-meta">
+            <span class="meta-item">
+              <strong>Type:</strong> {{ videoMetadata.type }}
+            </span>
+            <span class="meta-item">
+              <strong>Genre:</strong> {{ videoMetadata.genre || 'N/A' }}
+            </span>
+            <span class="meta-item">
+              <strong>Duration:</strong> {{ formatDuration(videoMetadata.length) }}
+            </span>
+            <span v-if="videoMetadata.type === 'EPISODE'" class="meta-item">
+              <strong>Season:</strong> {{ videoMetadata.seasonNumber || 'N/A' }}
+            </span>
+            <span v-if="videoMetadata.type === 'EPISODE'" class="meta-item">
+              <strong>Episode:</strong> {{ videoMetadata.episodeNumber || 'N/A' }}
+            </span>
+          </div>
+          
+          <div v-if="videoMetadata?.description" class="video-description">
+            <h3>Description</h3>
+            <p>{{ videoMetadata.description }}</p>
+          </div>
+          
+          <div class="video-info">
+            <h3>Video Information</h3>
+            <div class="info-grid">
+              <div class="info-item">
+                <span class="info-label">Status:</span>
+                <span :class="['status-badge', videoMetadata?.conversionStatus?.toLowerCase()]">
+                  {{ formatStatus(videoMetadata?.conversionStatus) }}
+                </span>
+              </div>
+              <div v-if="videoMetadata?.createdAt" class="info-item">
+                <span class="info-label">Created:</span>
+                <span>{{ formatDate(videoMetadata.createdAt) }}</span>
+              </div>
+              <div v-if="videoMetadata?.updatedAt" class="info-item">
+                <span class="info-label">Last Updated:</span>
+                <span>{{ formatDate(videoMetadata.updatedAt) }}</span>
+              </div>
+            </div>
+          </div>
+          
+          <button @click="loadVideo" class="btn btn-primary">
+            {{ videoMetadata ? 'Reload Video' : 'Load Video' }}
+          </button>
         </div>
       </div>
     </div>
@@ -38,9 +84,10 @@ const route = useRoute()
 const videoId = ref(route.params.id)
 const videoPlayer = ref(null)
 const error = ref('')
-const playlistUrl = ref(`http://localhost:8081/video/${videoId.value}/playlist`)
+const videoMetadata = ref(null)
 
 let hls = null
+let playlistUrl = ref(`http://localhost:8081/video/${videoId.value}/playlist`)
 
 onUnmounted(() => {
   if (hls) {
@@ -48,6 +95,24 @@ onUnmounted(() => {
     hls = null
   }
 })
+
+async function fetchVideoMetadata() {
+  try {
+    const response = await fetch(`http://localhost:8081/video/${videoId.value}`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    videoMetadata.value = await response.json()
+    // Update playlist URL from metadata if available
+    if (videoMetadata.value?.playlistUrl) {
+      playlistUrl.value = videoMetadata.value.playlistUrl
+    }
+    console.log('Video metadata loaded:', videoMetadata.value)
+  } catch (err) {
+    console.error('Failed to fetch video metadata:', err)
+    error.value = `Failed to load video metadata: ${err.message}`
+  }
+}
 
 function loadVideo() {
   if (!videoPlayer.value) {
@@ -102,9 +167,43 @@ function onVideoError(event) {
   }
 }
 
-// Auto-load on mount
-onMounted(() => {
-  setTimeout(loadVideo, 100) // Small delay to ensure DOM is ready
+function formatDuration(seconds) {
+  if (!seconds) return '0:00'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainingSeconds = seconds % 60
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+  } else {
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+}
+
+function formatStatus(status) {
+  if (!status) return 'Unknown'
+  const statusMap = {
+    'PENDING': 'Pending',
+    'IN_PROGRESS': 'Converting',
+    'COMPLETED': 'Ready',
+    'FAILED': 'Failed',
+    'CANCELLED': 'Cancelled'
+  }
+  return statusMap[status] || status
+}
+
+function formatDate(dateString) {
+  if (!dateString) return 'N/A'
+  return new Date(dateString).toLocaleString()
+}
+
+// Load metadata and video on mount
+onMounted(async () => {
+  await fetchVideoMetadata()
+  // Only auto-load video if it's completed
+  if (videoMetadata.value?.conversionStatus === 'COMPLETED') {
+    setTimeout(loadVideo, 100) // Small delay to ensure DOM is ready
+  }
 })
 </script>
 
@@ -178,9 +277,90 @@ onMounted(() => {
 }
 
 .video-title {
-  font-size: 1.5rem;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 1.5rem;
+  color: var(--primary-text);
+}
+
+.video-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  color: var(--secondary-text);
+}
+
+.meta-item {
+  font-size: 0.9375rem;
+}
+
+.video-description,
+.video-info {
+  margin-top: 2rem;
+}
+
+.video-description h3,
+.video-info h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
   margin-bottom: 1rem;
   color: var(--primary-text);
+}
+
+.video-description p {
+  color: var(--secondary-text);
+  line-height: 1.7;
+}
+
+.info-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.info-label {
+  width: 120px;
+  color: var(--secondary-text);
+}
+
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.status-badge.pending {
+  background-color: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+.status-badge.in_progress {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: var(--accent-color);
+}
+
+.status-badge.completed {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: var(--success-color);
+}
+
+.status-badge.failed {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: var(--danger-color);
+}
+
+.status-badge.cancelled {
+  background-color: rgba(107, 114, 128, 0.2);
+  color: #6b7280;
 }
 
 .btn {
@@ -193,6 +373,7 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.2s;
   margin-top: 1rem;
+  font-size: 0.9375rem;
 }
 
 .btn-primary {
@@ -202,5 +383,16 @@ onMounted(() => {
 
 .btn-primary:hover {
   background-color: var(--accent-hover);
+}
+
+@media (max-width: 768px) {
+  .video-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .info-label {
+    width: auto;
+  }
 }
 </style>
