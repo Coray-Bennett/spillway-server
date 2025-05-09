@@ -31,13 +31,20 @@
           </div>
           
           <video
-            v-else
+            v-if="video.conversionStatus === 'COMPLETED'"
             ref="videoPlayer"
             class="video-player"
             controls
+            preload="metadata"
+            playsinline
+            @loadstart="onLoadStart"
             @loadedmetadata="onVideoLoaded"
+            @loadeddata="onDataLoaded"
+            @canplay="onCanPlay"
+            @error="onVideoError"
           >
-            <p>Your browser does not support the video tag.</p>
+            <source v-if="fallbackMp4Url" :src="fallbackMp4Url" type="video/mp4" />
+            <p>Your browser does not support video playback.</p>
           </video>
         </div>
         
@@ -118,6 +125,7 @@ const videoPlayer = ref(null)
 const isLoading = ref(true)
 const error = ref('')
 const conversionProgress = ref(0)
+const fallbackMp4Url = ref('')
 
 let hls = null
 let statusCheckInterval = null
@@ -129,7 +137,7 @@ onMounted(async () => {
     await videoStore.getVideo(route.params.id)
     
     if (video.value.conversionStatus === 'COMPLETED') {
-      initializePlayer()
+      await initializePlayer()
     } else {
       startStatusCheck()
     }
@@ -144,6 +152,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (hls) {
     hls.destroy()
+    hls = null
   }
   if (statusCheckInterval) {
     clearInterval(statusCheckInterval)
@@ -151,17 +160,41 @@ onUnmounted(() => {
 })
 
 async function initializePlayer() {
-  if (!videoPlayer.value) return
+  console.log(!video.value?.playlistUrl);
+  if (!videoPlayer.value || !video.value?.playlistUrl) {
+    console.error('Video player element or playlist URL not available')
+    return
+  }
   
   const playlistUrl = video.value.playlistUrl
   
-  if (Hls.isSupported()) {
-    hls = new Hls()
+  // Log the URL for debugging
+  console.log('Initializing player with URL:', playlistUrl)
+  
+  // Check if browser supports HLS natively (Safari)
+  if (videoPlayer.value.canPlayType('application/vnd.apple.mpegurl')) {
+    console.log('Using native HLS support')
+    videoPlayer.value.src = playlistUrl
+    videoPlayer.value.load() // Explicitly load the video
+  } else if (Hls.isSupported()) {
+    console.log('Using HLS.js')
+    
+    // Destroy existing instance if any
+    if (hls) {
+      hls.destroy()
+    }
+    
+    hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      backBufferLength: 90
+    })
+    
     hls.loadSource(playlistUrl)
     hls.attachMedia(videoPlayer.value)
     
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      console.log('HLS manifest loaded')
+      console.log('HLS manifest loaded successfully')
     })
     
     hls.on(Hls.Events.ERROR, (event, data) => {
@@ -169,20 +202,20 @@ async function initializePlayer() {
       if (data.fatal) {
         switch (data.type) {
           case Hls.ErrorTypes.NETWORK_ERROR:
-            error.value = 'Network error loading video'
+            console.log('Attempting to recover from network error...')
+            hls.startLoad()
             break
           case Hls.ErrorTypes.MEDIA_ERROR:
-            error.value = 'Media error playing video'
+            console.log('Attempting to recover from media error...')
+            hls.recoverMediaError()
             break
           default:
-            error.value = 'Error playing video'
+            error.value = 'Fatal error playing video'
+            hls.destroy()
             break
         }
       }
     })
-  } else if (videoPlayer.value.canPlayType('application/vnd.apple.mpegurl')) {
-    // Native HLS support (Safari)
-    videoPlayer.value.src = playlistUrl
   } else {
     error.value = 'Your browser does not support HLS playback'
   }
@@ -190,15 +223,15 @@ async function initializePlayer() {
 
 function startStatusCheck() {
   statusCheckInterval = setInterval(async () => {
-    const status = await videoStore.getVideoStatus(route.params.id)
-    if (status) {
-      conversionProgress.value = status.progress || 0
-      
-      if (status.status === 'COMPLETED') {
+    try {
+      const updatedVideo = await videoStore.getVideo(route.params.id)
+      if (updatedVideo.conversionStatus === 'COMPLETED') {
         clearInterval(statusCheckInterval)
         video.value.conversionStatus = 'COMPLETED'
         await initializePlayer()
       }
+    } catch (error) {
+      console.error('Status check failed:', error)
     }
   }, 2000)
 }
@@ -238,10 +271,6 @@ function togglePictureInPicture() {
   }
 }
 
-function onVideoLoaded() {
-  console.log('Video loaded')
-}
-
 function formatDuration(seconds) {
   if (!seconds) return '0:00'
   const hours = Math.floor(seconds / 3600)
@@ -271,6 +300,38 @@ function formatDate(dateString) {
   if (!dateString) return 'N/A'
   return new Date(dateString).toLocaleString()
 }
+
+function onVideoError(event) {
+  console.error('Video error:', event)
+  const errorCode = event.target.error?.code
+  const errorMessage = event.target.error?.message
+  console.error('Error code:', errorCode, 'Message:', errorMessage)
+  
+  if (errorCode === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED
+    error.value = 'Video format not supported by browser'
+  } else if (errorCode === 2) { // MEDIA_ERR_NETWORK
+    error.value = 'Network error loading video'
+  } else {
+    error.value = 'Error playing video'
+  }
+}
+
+function onLoadStart() {
+  console.log('Video load started')
+}
+
+function onVideoLoaded(event) {
+  console.log('Video metadata loaded:', event)
+}
+
+function onDataLoaded(event) {
+  console.log('Video data loaded:', event)
+}
+
+function onCanPlay() {
+  console.log('Video can play')
+}
+
 </script>
 
 <style scoped>
