@@ -1,0 +1,71 @@
+name: Unit Tests
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  backend-unit-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+        
+    - name: Run Maven tests
+      working-directory: ./spillway
+      run: mvn test
+      continue-on-error: true  # Remove once tests are added
+      
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: backend-test-results
+        path: spillway/target/surefire-reports/
+        
+    - name: Publish test results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: always()
+      with:
+        junit_files: spillway/target/surefire-reports/*.xml
+        check_name: Backend Test Results
+
+  frontend-unit-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: spillway-frontend/package-lock.json
+        
+    - name: Install dependencies
+      working-directory: ./spillway-frontend
+      run: npm ci
+      
+    - name: Run tests
+      working-directory: ./spillway-frontend
+      run: npm test -- --coverage
+      continue-on-error: true  # Remove once tests are added
+      
+    - name: Upload test coverage
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: frontend-coverage
+        path: spillway-frontend/coverage/
