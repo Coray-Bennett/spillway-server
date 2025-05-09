@@ -48,4 +48,11 @@ public class PlaylistController {
         List<Video> videos = videoRepository.findByPlaylistIdOrderBySeasonNumberAscEpisodeNumberAsc(id);
         return ResponseEntity.ok(videos);
     }
+
+    @GetMapping("/my-playlists")
+    public ResponseEntity<List<Playlist>> getMyPlaylists() {
+        // For now, this returns all playlists
+        List<Playlist> playlists = playlistRepository.findAll();
+        return ResponseEntity.ok(playlists);
+    }
 }
