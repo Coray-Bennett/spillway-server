@@ -5,13 +5,13 @@ on:
     branches: [ "main", "develop" ]
     paths:
       - 'spillway/**'
-      - 'docker-compose.yml'
+      - 'spillway/docker-compose.yml'
       - '.github/workflows/docker-compose-ci.yml'
   pull_request:
     branches: [ "main" ]
     paths:
       - 'spillway/**'
-      - 'docker-compose.yml'
+      - 'spillway/docker-compose.yml'
       - '.github/workflows/docker-compose-ci.yml'
 
 jobs:
@@ -35,8 +35,8 @@ jobs:
     - name: Build and start services
       working-directory: ./spillway
       run: |
-        docker-compose build
-        docker-compose up -d
+        docker compose build
+        docker compose up -d
     
     - name: Wait for services to be healthy
       run: |
@@ -51,18 +51,14 @@ jobs:
     - name: Check service logs
       if: always()
       run: |
-        docker-compose logs
+        docker compose -f spillway/docker-compose.yml logs
     
     - name: Run basic API tests
       run: |
         # Test that the API is responding
         curl -f http://localhost:8081/actuator/health || exit 1
-        
-        # Add more API tests here as needed
-        # Example: Test auth endpoint
-        # curl -X POST http://localhost:8081/auth/login -H "Content-Type: application/json" -d '{"username":"test","password":"test"}'
     
     - name: Stop services
       if: always()
       working-directory: ./spillway
-      run: docker-compose down -v
+      run: docker compose down -v
