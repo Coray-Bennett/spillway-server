@@ -1,83 +1,46 @@
-package com.coraybennett.spillway.model;
+package com.coraybennett.spillway.dto;
 
 import java.time.LocalDateTime;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.coraybennett.spillway.model.ConversionStatus;
+import com.coraybennett.spillway.model.Video;
+import com.coraybennett.spillway.model.VideoType;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
-
-@Entity
-@Table(name = "videos")
-public class Video {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+public class VideoListResponse {
     private String id;
-    
-    @Column(nullable = false)
     private String title;
-    
-    @Column(nullable = false)
     private String playlistUrl;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private VideoType type;
-    
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private ConversionStatus conversionStatus = ConversionStatus.PENDING;
-    
-    private Integer conversionProgress = 0; // 0-100 percentage
-    
+    private ConversionStatus conversionStatus;
+    private Integer conversionProgress;
     private String conversionError;
-    
-    @Column(nullable = false)
-    private Integer length; // in seconds
-    
+    private Integer length;
     private String genre;
     private String description;
-    
-    @Column(nullable = false)
     private Integer seasonNumber;
-    
-    @Column(nullable = false)
     private Integer episodeNumber;
-    
-    @ManyToOne
-    @JoinColumn(name = "playlist_id")
-    @JsonBackReference("playlist-videos")
-    private Playlist playlist;
-    
-    @Column(nullable = false)
+    private String playlistName;  // Just the name, not the whole object
+    private String uploaderUsername; // Just the username
     private LocalDateTime createdAt;
-    
     private LocalDateTime updatedAt;
-
-    @ManyToOne
-    @JoinColumn(name = "uploaded_by_user_id", nullable = false)
-    @JsonBackReference("user-videos")
-    private User uploadedBy;
-
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+    
+    public VideoListResponse(Video video) {
+        this.id = video.getId();
+        this.title = video.getTitle();
+        this.playlistUrl = video.getPlaylistUrl();
+        this.type = video.getType();
+        this.conversionStatus = video.getConversionStatus();
+        this.conversionProgress = video.getConversionProgress();
+        this.conversionError = video.getConversionError();
+        this.length = video.getLength();
+        this.genre = video.getGenre();
+        this.description = video.getDescription();
+        this.seasonNumber = video.getSeasonNumber();
+        this.episodeNumber = video.getEpisodeNumber();
+        this.playlistName = video.getPlaylist() != null ? video.getPlaylist().getName() : null;
+        this.uploaderUsername = video.getUploadedBy() != null ? video.getUploadedBy().getUsername() : null;
+        this.createdAt = video.getCreatedAt();
+        this.updatedAt = video.getUpdatedAt();
     }
 
     public String getId() {
@@ -176,12 +139,20 @@ public class Video {
         this.episodeNumber = episodeNumber;
     }
 
-    public Playlist getPlaylist() {
-        return playlist;
+    public String getPlaylistName() {
+        return playlistName;
     }
 
-    public void setPlaylist(Playlist playlist) {
-        this.playlist = playlist;
+    public void setPlaylistName(String playlistName) {
+        this.playlistName = playlistName;
+    }
+
+    public String getUploaderUsername() {
+        return uploaderUsername;
+    }
+
+    public void setUploaderUsername(String uploaderUsername) {
+        this.uploaderUsername = uploaderUsername;
     }
 
     public LocalDateTime getCreatedAt() {
@@ -200,11 +171,4 @@ public class Video {
         this.updatedAt = updatedAt;
     }
 
-    public User getUploadedBy() { 
-        return uploadedBy; 
-    }
-
-    public void setUploadedBy(User uploadedBy) { 
-        this.uploadedBy = uploadedBy; 
-    }
 }
