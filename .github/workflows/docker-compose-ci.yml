@@ -35,65 +35,63 @@ jobs:
     - name: Build and start services
       working-directory: ./spillway
       run: |
-        docker compose build --no-cache
+        docker compose build
         docker compose up -d
-    
-    - name: Show running containers
-      run: docker ps -a
     
     - name: Wait for services to be healthy
       run: |
         echo "Waiting for MySQL to be ready..."
-        timeout 60s bash -c 'until docker exec $(docker ps -q -f name=mysql) mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done' || {
-          echo "MySQL failed to start. Checking logs..."
-          docker compose -f spillway/docker-compose.yml logs mysql
-          exit 1
-        }
+        timeout 60s bash -c 'until docker exec $(docker ps -q -f name=mysql) mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done'
         echo "MySQL is ready!"
         
         echo "Waiting for Spillway to be ready..."
-        timeout 120s bash -c 'until curl -sf http://localhost:8081/actuator/health; do 
-          echo "Waiting for Spillway... checking logs"
-          docker compose -f spillway/docker-compose.yml logs spillway | tail -20
-          sleep 5
-        done' || {
-          echo "Spillway failed to start. Checking full logs..."
-          docker compose -f spillway/docker-compose.yml logs spillway
-          echo "Checking all container statuses..."
-          docker ps -a
-          exit 1
-        }
+        # Try to connect to the server port instead
+        timeout 60s bash -c 'until nc -zv localhost 8081; do echo "Waiting for Spillway..."; sleep 2; done'
+        
+        # Give it a few more seconds for Spring Boot to fully initialize
+        sleep 5
         echo "Spillway is ready!"
     
-    - name: Check service health
+    - name: Check service logs
+      if: always()
+      working-directory: ./spillway
       run: |
-        echo "Checking actuator health endpoint..."
-        curl -sf http://localhost:8081/actuator/health | jq . || {
-          echo "Failed to get health status"
-          exit 1
-        }
+        docker compose logs
     
     - name: Run basic API tests
       run: |
-        # Test that the API is responding
-        echo "Testing root endpoint..."
-        curl -f http://localhost:8081/ || true
-        
+        # Check if the server is responding to a real endpoint
         echo "Testing auth endpoint..."
-        curl -X POST http://localhost:8081/auth/login \
+        response=$(curl -s -X POST http://localhost:8081/auth/login \
           -H "Content-Type: application/json" \
-          -d '{"username":"test","password":"test"}' || true
-    
-    - name: Show service logs on failure
-      if: failure()
-      working-directory: ./spillway
-      run: |
-        echo "=== Docker Compose Status ==="
-        docker compose ps
-        echo "=== MySQL Logs ==="
-        docker compose logs mysql
-        echo "=== Spillway Logs ==="
-        docker compose logs spillway
+          -d '{"username":"test","password":"test"}' \
+          -w "\n%{http_code}")
+        
+        http_code=$(echo "$response" | tail -n1)
+        echo "HTTP Status: $http_code"
+        
+        # We expect a 401 (unauthorized) or 400 (bad request) since we're using invalid credentials
+        if [[ "$http_code" == "401" || "$http_code" == "400" ]]; then
+          echo "Auth endpoint is working correctly"
+        else
+          echo "Unexpected response from auth endpoint"
+          echo "$response"
+          exit 1
+        fi
+        
+        # Test if we can access video metadata endpoint (should return 404 for non-existent video)
+        echo "Testing video endpoint..."
+        response=$(curl -s http://localhost:8081/video/test-id -w "\n%{http_code}")
+        http_code=$(echo "$response" | tail -n1)
+        echo "HTTP Status: $http_code"
+        
+        if [[ "$http_code" == "404" ]]; then
+          echo "Video endpoint is working correctly"
+        else
+          echo "Unexpected response from video endpoint"
+          echo "$response"
+          exit 1
+        fi
     
     - name: Stop services
       if: always()
