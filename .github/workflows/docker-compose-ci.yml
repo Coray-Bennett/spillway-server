@@ -35,33 +35,65 @@ jobs:
     - name: Build and start services
       working-directory: ./spillway
       run: |
-        docker compose build
+        docker compose build --no-cache
         docker compose up -d
+    
+    - name: Show running containers
+      run: docker ps -a
     
     - name: Wait for services to be healthy
       run: |
         echo "Waiting for MySQL to be ready..."
-        timeout 60s bash -c 'until docker exec $(docker ps -q -f name=mysql) mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done'
+        timeout 60s bash -c 'until docker exec $(docker ps -q -f name=mysql) mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done' || {
+          echo "MySQL failed to start. Checking logs..."
+          docker compose -f spillway/docker-compose.yml logs mysql
+          exit 1
+        }
         echo "MySQL is ready!"
         
         echo "Waiting for Spillway to be ready..."
-        timeout 60s bash -c 'until curl -f http://localhost:8081/actuator/health 2>/dev/null; do sleep 2; done'
+        timeout 120s bash -c 'until curl -sf http://localhost:8081/actuator/health; do 
+          echo "Waiting for Spillway... checking logs"
+          docker compose -f spillway/docker-compose.yml logs spillway | tail -20
+          sleep 5
+        done' || {
+          echo "Spillway failed to start. Checking full logs..."
+          docker compose -f spillway/docker-compose.yml logs spillway
+          echo "Checking all container statuses..."
+          docker ps -a
+          exit 1
+        }
         echo "Spillway is ready!"
     
-    - name: Check service logs
-      if: always()
-      working-directory: ./spillway
+    - name: Check service health
       run: |
-        docker compose logs
+        echo "Checking actuator health endpoint..."
+        curl -sf http://localhost:8081/actuator/health | jq . || {
+          echo "Failed to get health status"
+          exit 1
+        }
     
     - name: Run basic API tests
       run: |
         # Test that the API is responding
-        curl -f http://localhost:8081/actuator/health || exit 1
+        echo "Testing root endpoint..."
+        curl -f http://localhost:8081/ || true
         
-        # Add more API tests here as needed
-        # Example: Test auth endpoint
-        # curl -X POST http://localhost:8081/auth/login -H "Content-Type: application/json" -d '{"username":"test","password":"test"}'
+        echo "Testing auth endpoint..."
+        curl -X POST http://localhost:8081/auth/login \
+          -H "Content-Type: application/json" \
+          -d '{"username":"test","password":"test"}' || true
+    
+    - name: Show service logs on failure
+      if: failure()
+      working-directory: ./spillway
+      run: |
+        echo "=== Docker Compose Status ==="
+        docker compose ps
+        echo "=== MySQL Logs ==="
+        docker compose logs mysql
+        echo "=== Spillway Logs ==="
+        docker compose logs spillway
     
     - name: Stop services
       if: always()
