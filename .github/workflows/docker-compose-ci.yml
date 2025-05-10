@@ -35,8 +35,8 @@ jobs:
     - name: Build and start services
       working-directory: ./spillway
       run: |
-        docker-compose build
-        docker-compose up -d
+        docker compose build
+        docker compose up -d
     
     - name: Wait for services to be healthy
       run: |
@@ -50,8 +50,9 @@ jobs:
     
     - name: Check service logs
       if: always()
+      working-directory: ./spillway
       run: |
-        docker-compose logs
+        docker compose logs
     
     - name: Run basic API tests
       run: |
@@ -65,4 +66,4 @@ jobs:
     - name: Stop services
       if: always()
       working-directory: ./spillway
-      run: docker-compose down -v
+      run: docker compose down -v
