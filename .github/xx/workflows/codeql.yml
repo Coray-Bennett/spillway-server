@@ -1,12 +1,12 @@
-name: "CodeQL"
+name: CodeQL Analysis
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
   schedule:
-    - cron: '0 0 * * 0'
+    - cron: '0 0 * * 0'  # Weekly
 
 jobs:
   analyze:
@@ -16,33 +16,23 @@ jobs:
       actions: read
       contents: read
       security-events: write
-
+      
     strategy:
       fail-fast: false
       matrix:
         language: [ 'java', 'javascript' ]
-
+        
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-
+      
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
       with:
         languages: ${{ matrix.language }}
-
-    - name: Set up JDK 17
-      if: matrix.language == 'java'
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: maven
-
-    - name: Build Java project
-      if: matrix.language == 'java'
-      working-directory: ./spillway
-      run: mvn clean compile -DskipTests
-
+        
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v2
+      
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2

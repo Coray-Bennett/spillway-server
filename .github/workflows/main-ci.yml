@@ -21,12 +21,10 @@ jobs:
     uses: ./.github/workflows/integration-tests.yml
     needs: [backend]
   
-  create-release:
+  release:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [backend, frontend, docker-compose, integration-tests]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     
     steps:
     - uses: actions/checkout@v4
@@ -43,33 +41,38 @@ jobs:
         name: frontend-build-20.x
         path: spillway-frontend/dist/
     
-    - name: Create frontend archive
-      run: |
-        cd spillway-frontend/dist
-        tar -czf ../../frontend-dist.tar.gz *
-        cd ../..
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
     
-    - name: Generate release tag
-      id: tag
-      run: echo "tag=v$(date +'%Y%m%d.%H%M%S')" >> $GITHUB_OUTPUT
+    - name: Login to Docker Hub
+      if: env.DOCKERHUB_USERNAME != ''
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    
+    - name: Build and push backend Docker image
+      if: env.DOCKERHUB_USERNAME != ''
+      uses: docker/build-push-action@v5
+      with:
+        context: ./spillway
+        file: ./spillway/Dockerfile
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/spillway:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/spillway:${{ github.sha }}
+      env:
+        DOCKERHUB_USERNAME: ${ secrets.DOCKERHUB_USERNAME }}
     
     - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/heads/main')
       uses: softprops/action-gh-release@v1
       with:
         files: |
           spillway/target/*.jar
-          frontend-dist.tar.gz
-        tag_name: ${{ steps.tag.outputs.tag }}
-        name: Release ${{ steps.tag.outputs.tag }}
-        body: |
-          Automated release from main branch
-          
-          ## Changes
-          - Backend JAR included
-          - Frontend build included
-          
-          Commit: ${{ github.sha }}
+        tag_name: v${{ github.run_number }}
+        name: Release ${{ github.run_number }}
         draft: false
         prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
