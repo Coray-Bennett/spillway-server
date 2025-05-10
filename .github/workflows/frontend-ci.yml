@@ -37,12 +37,10 @@ jobs:
     - name: Run linting
       working-directory: ./spillway-frontend
       run: npm run lint --if-present
-      continue-on-error: true  # Continue if lint script doesn't exist
     
     - name: Run unit tests
       working-directory: ./spillway-frontend
       run: npm run test:unit --if-present
-      continue-on-error: true  # Continue if test script doesn't exist
     
     - name: Build production bundle
       working-directory: ./spillway-frontend

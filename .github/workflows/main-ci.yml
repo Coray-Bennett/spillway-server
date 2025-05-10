@@ -7,96 +7,24 @@ on:
     branches: [ "main" ]
 
 jobs:
-  backend-build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: maven
-    
-    - name: Build with Maven
-      working-directory: ./spillway
-      run: mvn clean package -DskipTests
-    
-    - name: Upload JAR artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: spillway-jar
-        path: spillway/target/*.jar
-        retention-days: 7
-
-  frontend-build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js 20.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
-        cache: 'npm'
-        cache-dependency-path: spillway-frontend/package-lock.json
-    
-    - name: Install dependencies
-      working-directory: ./spillway-frontend
-      run: npm ci
-    
-    - name: Build production bundle
-      working-directory: ./spillway-frontend
-      run: npm run build
-      env:
-        VITE_API_BASE_URL: http://localhost:8081
-    
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: frontend-build
-        path: spillway-frontend/dist/
-        retention-days: 7
-
-  docker-compose-validate:
-    needs: [backend-build]
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Download backend artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: spillway-jar
-        path: spillway/target/
-    
-    - name: Build Docker image
-      working-directory: ./spillway
-      run: docker build . --file Dockerfile --tag spillway:test
-    
-    - name: Start services
-      working-directory: ./spillway
-      run: |
-        docker compose up -d
-        
-    - name: Wait for services
-      run: |
-        echo "Waiting for services to start..."
-        sleep 30
-        docker compose -f spillway/docker-compose.yml ps
-        
-    - name: Stop services
-      if: always()
-      working-directory: ./spillway
-      run: docker compose down -v
-
-  create-release:
+  backend:
+    uses: ./.github/workflows/backend-ci.yml
+  
+  frontend:
+    uses: ./.github/workflows/frontend-ci.yml
+  
+  docker-compose:
+    uses: ./.github/workflows/docker-compose-ci.yml
+    needs: [backend]
+  
+  integration-tests:
+    uses: ./.github/workflows/integration-tests.yml
+    needs: [backend]
+  
+  release:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [backend-build, frontend-build, docker-compose-validate]
+    needs: [backend, frontend, docker-compose, integration-tests]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     
     steps:
     - uses: actions/checkout@v4
@@ -110,27 +38,41 @@ jobs:
     - name: Download frontend artifact
       uses: actions/download-artifact@v4
       with:
-        name: frontend-build
-        path: release-artifacts/frontend/
+        name: frontend-build-20.x
+        path: spillway-frontend/dist/
     
-    - name: Create frontend archive
-      run: |
-        cd release-artifacts/frontend
-        zip -r ../../frontend-build.zip .
-        cd ../..
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
     
-    - name: Generate release version
-      id: version
-      run: echo "version=v$(date +'%Y.%m.%d')-${{ github.run_number }}" >> $GITHUB_OUTPUT
+    - name: Login to Docker Hub
+      if: env.DOCKERHUB_USERNAME != ''
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      env:
+        DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    
+    - name: Build and push backend Docker image
+      if: env.DOCKERHUB_USERNAME != ''
+      uses: docker/build-push-action@v5
+      with:
+        context: ./spillway
+        file: ./spillway/Dockerfile
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/spillway:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/spillway:${{ github.sha }}
+      env:
+        DOCKERHUB_USERNAME: ${ secrets.DOCKERHUB_USERNAME }}
     
     - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/heads/main')
       uses: softprops/action-gh-release@v1
       with:
         files: |
           spillway/target/*.jar
-          frontend-build.zip
-        tag_name: ${{ steps.version.outputs.version }}
-        name: Release ${{ steps.version.outputs.version }}
+        tag_name: v${{ github.run_number }}
+        name: Release ${{ github.run_number }}
         draft: false
         prerelease: false
-        generate_release_notes: true
