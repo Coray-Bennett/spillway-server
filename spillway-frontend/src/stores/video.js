@@ -112,6 +112,38 @@ export const useVideoStore = defineStore('video', {
         this.error = error.response?.data || 'Failed to fetch playlist videos'
         throw error
       }
+    },
+
+    async getMyVideos() {
+      this.isLoading = true;
+      this.error = null;
+      
+      try {
+        const response = await axios.get(`${API_BASE_URL}/video/my-videos`);
+        this.videos = response.data;
+        return this.videos;
+      } catch (error) {
+        this.error = error.response?.data || 'Failed to fetch your videos';
+        throw error;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+    
+    async getMyPlaylists() {
+      this.isLoading = true;
+      this.error = null;
+      
+      try {
+        const response = await axios.get(`${API_BASE_URL}/playlist/my-playlists`);
+        this.playlists = response.data;
+        return this.playlists;
+      } catch (error) {
+        this.error = error.response?.data || 'Failed to fetch your playlists';
+        throw error;
+      } finally {
+        this.isLoading = false;
+      }
     }
   }
 })
