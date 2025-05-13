@@ -101,9 +101,16 @@ const expandedPlaylists = ref(new Set())
 const playlistVideos = reactive({})
 
 onMounted(async () => {
-  // Note: You'll need to implement a getMyPlaylists method in the video store
-  // For now, we'll use the existing playlists array from the store
-  playlists.value = videoStore.playlists
+  try {
+    isLoading.value = true
+    await videoStore.getMyPlaylists()
+    playlists.value = videoStore.playlists
+  } catch (err) {
+    error.value = 'Failed to load playlists'
+    console.error(err)
+  } finally {
+    isLoading.value = false
+  }
 })
 
 async function togglePlaylist(playlistId) {
