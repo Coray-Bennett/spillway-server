@@ -32,6 +32,10 @@ public class User {
     @JsonManagedReference("user-videos")
     private List<Video> uploadedVideos;
 
+    @OneToMany(mappedBy = "createdBy")
+    @JsonManagedReference("user-playlists")
+    private List<Playlist> createdPlaylists;
+
     public User() {}
 
     public User(String username, String password, String email) {

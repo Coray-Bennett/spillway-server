@@ -16,6 +16,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -132,6 +134,33 @@ public class VideoController {
             .collect(Collectors.toList());
             
         return ResponseEntity.ok(videoResponses);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateVideo(@PathVariable String id, @RequestBody Video videoDetails, Principal principal) {
+        User user = userRepository.findByUsername(principal.getName())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        Optional<Video> videoOpt = videoService.getVideoById(id);
+        if (videoOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        Video video = videoOpt.get();
+        
+        // Check if user has permission (is uploader)
+        if (!user.getId().equals(video.getUploadedBy().getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        // Update video fields (only update fields that should be editable)
+        video.setTitle(videoDetails.getTitle());
+        video.setDescription(videoDetails.getDescription());
+        video.setGenre(videoDetails.getGenre());
+        
+        Video updatedVideo = videoRepository.save(video);
+        
+        return ResponseEntity.ok(new VideoListResponse(updatedVideo));
     }
     
     ByteArrayResource fileToByteArrayResource(String path) throws IOException {

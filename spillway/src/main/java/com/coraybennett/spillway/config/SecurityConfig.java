@@ -43,6 +43,8 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers(HttpMethod.GET).permitAll()
                 .requestMatchers(HttpMethod.POST).authenticated()
+                .requestMatchers(HttpMethod.PUT).authenticated()
+                .requestMatchers(HttpMethod.DELETE).authenticated()
                 .anyRequest().permitAll()
             )
             .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
