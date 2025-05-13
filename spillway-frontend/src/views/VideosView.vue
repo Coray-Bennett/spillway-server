@@ -78,9 +78,16 @@
   const error = ref('')
   
   onMounted(async () => {
-    // Note: You'll need to implement a getMyVideos method in the video store
-    // For now, we'll use the existing videos array from the store
-    videos.value = videoStore.videos
+    try {
+      isLoading.value = true
+      await videoStore.getMyVideos()
+      videos.value = videoStore.videos
+    } catch (err) {
+      error.value = 'Failed to load videos'
+      console.error(err)
+    } finally {
+      isLoading.value = false
+    }
   })
   
   function formatDuration(seconds) {

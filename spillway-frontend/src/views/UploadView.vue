@@ -232,7 +232,12 @@
   const uploadProgress = computed(() => videoStore.uploadProgress)
   
   onMounted(async () => {
-    // Load playlists would go here
+    try {
+      await videoStore.getMyPlaylists()
+      playlists.value = videoStore.playlists
+    } catch (err) {
+      console.error('Failed to load playlists:', err)
+    }
   })
   
   function handleFileSelect(event) {
