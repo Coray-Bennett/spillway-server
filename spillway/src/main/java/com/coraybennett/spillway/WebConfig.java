@@ -16,6 +16,7 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
 import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
+@EnableWebMvc
 public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
@@ -30,7 +31,7 @@ public class WebConfig implements WebMvcConfigurer {
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         // Ensure HLS files are served with correct content types
         registry.addResourceHandler("/hls/**")
-            .addResourceLocations("file:/path/to/hls/files/")
+            .addResourceLocations("content/**")
             .setCacheControl(CacheControl.maxAge(3600, TimeUnit.SECONDS))
             .resourceChain(true)
             .addResolver(new PathResourceResolver());
