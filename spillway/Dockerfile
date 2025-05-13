@@ -11,7 +11,7 @@ FROM eclipse-temurin:17
 RUN apt-get update -qq && apt-get install -y ffmpeg
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
-COPY content content
+COPY conten[t] content
 
 ENV SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/spillway?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
 ENV SPRING_DATASOURCE_USERNAME=spillway
