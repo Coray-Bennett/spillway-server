@@ -1,5 +1,29 @@
 <template>
   <div class="app">
+    <!-- SVG Filter for wave distortion -->
+    <svg style="position: absolute; width: 0; height: 0">
+      <filter id="wave-filter">
+        <feTurbulence 
+          type="turbulence" 
+          baseFrequency="0.01" 
+          numOctaves="2" 
+          seed="2">
+          <animate 
+            attributeName="baseFrequency" 
+            dur="20s" 
+            values="0.01;0.02;0.01" 
+            repeatCount="indefinite" />
+        </feTurbulence>
+        <feDisplacementMap in="SourceGraphic" scale="8">
+          <animate 
+            attributeName="scale" 
+            dur="15s" 
+            values="5;10;5" 
+            repeatCount="indefinite" />
+        </feDisplacementMap>
+      </filter>
+    </svg>
+
     <div id="icon-sprite" v-html="iconSprite"></div>
     
     <header class="app-header">
@@ -62,6 +86,33 @@ function handleLogout() {
 </script>
 
 <style scoped>
+
+/* Add the lattice background to the app container */
+.app::before {
+  content: '';
+  position: fixed;
+  inset: -50%;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.12;
+  background: 
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 60px,
+      var(--accent-color) 60px,
+      var(--accent-color) 61px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 60px,
+      var(--accent-color) 60px,
+      var(--accent-color) 61px
+    );
+  filter: url('#wave-filter');
+}
+
 #icon-sprite {
   display: none;
 }
