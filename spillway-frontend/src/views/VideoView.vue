@@ -2,7 +2,7 @@
   <div class="video-view">
     <div class="container">
       <div v-if="error" class="error-state">
-        <div class="error-icon">❌</div>
+        <BaseIcon name="error" :size="64" class="error-icon" />
         <h2 class="error-title">Error</h2>
         <p class="error-text">{{ error }}</p>
       </div>
@@ -79,6 +79,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Hls from 'hls.js'
+import BaseIcon from '../components/icons/BaseIcon.vue'
 
 const route = useRoute()
 const videoId = ref(route.params.id)
@@ -103,7 +104,7 @@ async function fetchVideoMetadata() {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
     videoMetadata.value = await response.json()
-    // Update playlist URL from metadata if available
+
     if (videoMetadata.value?.playlistUrl) {
       playlistUrl.value = videoMetadata.value.playlistUrl
     }
@@ -120,7 +121,6 @@ function loadVideo() {
     return
   }
   
-  // Clear any existing error
   error.value = ''
   
   console.log('Loading video with URL:', playlistUrl.value)
@@ -197,17 +197,20 @@ function formatDate(dateString) {
   return new Date(dateString).toLocaleString()
 }
 
-// Load metadata and video on mount
 onMounted(async () => {
   await fetchVideoMetadata()
-  // Only auto-load video if it's completed
   if (videoMetadata.value?.conversionStatus === 'COMPLETED') {
-    setTimeout(loadVideo, 100) // Small delay to ensure DOM is ready
+    setTimeout(loadVideo, 100)
   }
 })
 </script>
 
 <style scoped>
+.error-icon {
+  color: var(--danger-color);
+  margin-bottom: 1rem;
+}
+
 .video-view {
   padding: 2rem 0;
   min-height: 100vh;

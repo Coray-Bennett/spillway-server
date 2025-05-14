@@ -32,34 +32,102 @@ body {
   position: relative;
 }
 
-/* Animated Background */
-body::before {
+/* Animated Lattice Background */
+body::before,
+body::after {
   content: '';
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background: 
-    radial-gradient(circle at 25% 25%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 75% 75%, rgba(99, 102, 241, 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.03) 0%, transparent 50%);
-  animation: float 20s ease-in-out infinite;
+  width: 200%;
+  height: 200%;
   pointer-events: none;
   z-index: -1;
+  opacity: 0.15;
 }
 
-@keyframes float {
+body::before {
+  background-image: 
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 40px,
+      var(--accent-color) 40px,
+      var(--accent-color) 41px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 40px,
+      var(--accent-color) 40px,
+      var(--accent-color) 41px
+    );
+  animation: wave-motion 20s ease-in-out infinite;
+  transform: translateX(-50%) translateY(-50%);
+}
+
+body::after {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(99, 102, 241, 0.1) 0%,
+    transparent 50%
+  );
+  animation: pulse 4s ease-in-out infinite;
+  transform: translateX(-50%) translateY(-50%);
+}
+
+@keyframes wave-motion {
   0%, 100% {
-    transform: translate(0, 0) rotate(0deg);
+    transform: translateX(-50%) translateY(-50%) rotate(0deg) scale(1);
   }
-  33% {
-    transform: translate(30px, -30px) rotate(1deg);
+  25% {
+    transform: translateX(-48%) translateY(-52%) rotate(1deg) scale(1.02);
   }
-  66% {
-    transform: translate(-20px, 20px) rotate(-1deg);
+  50% {
+    transform: translateX(-52%) translateY(-48%) rotate(-1deg) scale(0.98);
+  }
+  75% {
+    transform: translateX(-50%) translateY(-50%) rotate(0.5deg) scale(1.01);
   }
 }
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+/* Alternative lattice style (optional - comment out the above and uncomment below) */
+/*
+body::before {
+  background: 
+    linear-gradient(45deg, transparent 49%, var(--accent-color) 49%, var(--accent-color) 51%, transparent 51%),
+    linear-gradient(-45deg, transparent 49%, var(--accent-color) 49%, var(--accent-color) 51%, transparent 51%);
+  background-size: 60px 60px;
+  animation: lattice-wave 15s linear infinite;
+}
+
+@keyframes lattice-wave {
+  0% {
+    transform: translateX(-50%) translateY(-50%) skewY(0deg);
+  }
+  25% {
+    transform: translateX(-50%) translateY(-50%) skewY(2deg);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-50%) skewY(0deg);
+  }
+  75% {
+    transform: translateX(-50%) translateY(-50%) skewY(-2deg);
+  }
+  100% {
+    transform: translateX(-50%) translateY(-50%) skewY(0deg);
+  }
+}
+*/
 
 a {
   text-decoration: none;
