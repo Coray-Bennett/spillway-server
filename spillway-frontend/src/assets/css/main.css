@@ -32,8 +32,7 @@ body {
   position: relative;
 }
 
-/* SVG Filter Method for True Wave Distortion (alternative approach) */
-.app {
+/* .app {
   position: relative;
   min-height: 100vh;
 }
@@ -64,8 +63,7 @@ body {
       var(--accent-color) 51px
     );
   filter: url('#wave-filter');
-}
-
+} */
 
 a {
   text-decoration: none;
