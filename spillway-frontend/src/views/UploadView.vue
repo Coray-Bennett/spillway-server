@@ -204,6 +204,7 @@
   import { ref, onMounted, computed } from 'vue'
   import { useRouter } from 'vue-router'
   import { useVideoStore } from '../stores/video'
+  import BaseIcon from '../components/icons/BaseIcon.vue'
   
   const videoStore = useVideoStore()
   const router = useRouter()
@@ -321,6 +322,37 @@
   </script>
   
   <style scoped>
+    .upload-icon {
+    color: var(--accent-color);
+    margin-bottom: 1rem;
+    transition: var(--transition);
+  }
+
+  .file-upload-zone:hover .upload-icon {
+    transform: scale(1.1) rotate(-5deg);
+  }
+
+  .file-icon {
+    color: var(--accent-color);
+  }
+
+  .remove-file-btn {
+    background: none;
+    border: none;
+    color: var(--secondary-text);
+    cursor: pointer;
+    transition: var(--transition);
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .remove-file-btn:hover {
+    color: var(--danger-color);
+    transform: scale(1.1);
+  }
+
   .upload-container {
     max-width: 800px;
     margin: 0 auto;
