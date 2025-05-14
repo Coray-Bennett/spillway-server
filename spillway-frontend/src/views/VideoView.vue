@@ -80,8 +80,21 @@
           <button @click="loadVideo" class="btn btn-primary">
             {{ videoMetadata ? 'Reload Video' : 'Load Video' }}
           </button>
+
+          <PlaylistManager 
+            v-if="videoMetadata && isOwner" 
+            :video="videoMetadata" 
+            @updated="fetchVideoMetadata"
+          />
         </div>
       </div>
+
+      <VideoEditModal
+        v-if="showEditModal && videoMetadata"
+        :video="videoMetadata"
+        @close="showEditModal = false"
+        @updated="onVideoUpdated"
+      />
     </div>
   </div>
 </template>
@@ -97,6 +110,7 @@ import PlaylistManager from '../components/PlaylistManager.vue'
 import BaseIcon from '../components/icons/BaseIcon.vue'
 
 const route = useRoute()
+const router = useRouter()
 const videoId = ref(route.params.id)
 const videoPlayer = ref(null)
 const error = ref('')
@@ -105,8 +119,8 @@ const showEditModal = ref(false)
 const authStore = useAuthStore()
 
 const isOwner = computed(() => {
-  if (!authStore.user || !videoMetadata.value) return false
-  return videoMetadata.value.uploaderUsername === authStore.user.username
+  if (!authStore.isAuthenticated || !videoMetadata.value) return false
+  return videoMetadata.value.uploaderUsername === authStore.currentUsername
 })
 
 async function handleDelete() {
@@ -141,12 +155,17 @@ async function fetchVideoMetadata() {
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
-    videoMetadata.value = await response.json()
-
-    if (videoMetadata.value?.playlistUrl) {
-      playlistUrl.value = videoMetadata.value.playlistUrl
+    const data = await response.json()
+    videoMetadata.value = data
+    
+    // Update playlist URL from metadata if available
+    if (data?.playlistUrl) {
+      playlistUrl.value = data.playlistUrl
     }
-    console.log('Video metadata loaded:', videoMetadata.value)
+    console.log('Video metadata loaded:', data)
+    console.log('Current user:', authStore.currentUsername)
+    console.log('Video uploader:', data.uploaderUsername)
+    console.log('Is owner:', isOwner.value)
   } catch (err) {
     console.error('Failed to fetch video metadata:', err)
     error.value = `Failed to load video metadata: ${err.message}`
