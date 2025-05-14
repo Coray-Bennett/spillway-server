@@ -5,7 +5,8 @@
           <div class="header-content">
             <h1 class="page-title">My Videos</h1>
             <router-link to="/upload" class="btn btn-primary">
-              <span>+</span> Upload Video
+              <BaseIcon name="plus" :size="16" />
+               Upload Video
             </router-link>
           </div>
         </header>
@@ -15,10 +16,11 @@
         </div>
         
         <div v-else-if="videos.length === 0" class="empty-state">
-          <div class="empty-icon">📹</div>
+          <BaseIcon name="video" :size="64" class="empty-icon" />
           <h2 class="empty-title">No videos yet</h2>
           <p class="empty-text">Start by uploading your first video</p>
           <router-link to="/upload" class="btn btn-primary">
+            <BaseIcon name="upload" :size="20" />
             Upload Video
           </router-link>
         </div>
@@ -31,7 +33,7 @@
               </div>
               <div class="video-overlay">
                 <router-link :to="`/video/${video.id}`" class="play-button">
-                  ▶️
+                  <BaseIcon name="play" :size="24" />
                 </router-link>
               </div>
             </div>
@@ -71,6 +73,7 @@
   <script setup>
   import { ref, onMounted } from 'vue'
   import { useVideoStore } from '../stores/video'
+  import BaseIcon from '../components/icons/BaseIcon.vue'
   
   const videoStore = useVideoStore()
   const videos = ref([])
@@ -117,6 +120,30 @@
   </script>
   
   <style scoped>
+    .empty-icon {
+    color: var(--accent-color);
+    opacity: 0.5;
+    margin-bottom: 1rem;
+  }
+
+  .play-button {
+    width: 48px;
+    height: 48px;
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    color: var(--primary-bg);
+  }
+
+  .play-button:hover {
+    background-color: white;
+    transform: scale(1.1);
+    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.3);
+  }
+
   .header-content {
     display: flex;
     justify-content: space-between;
