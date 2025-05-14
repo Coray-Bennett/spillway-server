@@ -22,6 +22,17 @@
         <div class="video-details">
           <h1 class="video-title">{{ videoMetadata?.title || videoId }}</h1>
           <p v-if="!videoMetadata">Playlist URL: {{ playlistUrl }}</p>
+
+          <div v-if="isOwner" class="video-actions">
+            <button @click="showEditModal = true" class="btn btn-secondary">
+              <BaseIcon name="edit" :size="16" />
+              Edit
+            </button>
+            <button @click="handleDelete" class="btn btn-danger">
+              <BaseIcon name="trash" :size="16" />
+              Delete
+            </button>
+          </div>
           
           <div v-if="videoMetadata" class="video-meta">
             <span class="meta-item">
@@ -76,9 +87,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { useVideoStore } from '../stores/video'
 import Hls from 'hls.js'
+import VideoEditModal from '../components/VideoEditModal.vue'
+import PlaylistManager from '../components/PlaylistManager.vue'
 import BaseIcon from '../components/icons/BaseIcon.vue'
 
 const route = useRoute()
@@ -86,6 +101,29 @@ const videoId = ref(route.params.id)
 const videoPlayer = ref(null)
 const error = ref('')
 const videoMetadata = ref(null)
+const showEditModal = ref(false)
+const authStore = useAuthStore()
+
+const isOwner = computed(() => {
+  if (!authStore.user || !videoMetadata.value) return false
+  return videoMetadata.value.uploaderUsername === authStore.user.username
+})
+
+async function handleDelete() {
+  if (confirm('Are you sure you want to delete this video?')) {
+    const result = await videoStore.deleteVideo(videoMetadata.value.id)
+    if (result.success) {
+      router.push('/videos')
+    } else {
+      alert(`Failed to delete video: ${result.error}`)
+    }
+  }
+}
+
+function onVideoUpdated(updatedVideo) {
+  videoMetadata.value = updatedVideo
+  showEditModal.value = false
+}
 
 let hls = null
 let playlistUrl = ref(`http://localhost:8081/video/${videoId.value}/playlist`)
