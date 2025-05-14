@@ -18,6 +18,7 @@
                 :class="['tab-button', { active: activeTab === 'playlist' }]"
                 @click="activeTab = 'playlist'"
               >
+              <BaseIcon name="plus" :size="16" />
                 Create Playlist
               </button>
             </div>
@@ -120,17 +121,19 @@
                     />
                     <div class="file-upload-zone" @click="$refs.fileInput.click()">
                       <div v-if="!selectedFile" class="upload-content">
-                        <div class="upload-icon">📁</div>
+                        <BaseIcon name="upload" :size="48" class="upload-icon" />
                         <p class="upload-text">Click to select video file or drag and drop</p>
                         <p class="upload-hint">Max size: 10GB</p>
                       </div>
                       <div v-else class="selected-file">
-                        <div class="file-icon">🎥</div>
+                        <BaseIcon name="file" :size="24" class="file-icon" />
                         <div class="file-info">
                           <p class="file-name">{{ selectedFile.name }}</p>
                           <p class="file-size">{{ formatFileSize(selectedFile.size) }}</p>
                         </div>
-                        <button @click.stop="selectedFile = null" class="remove-file-btn">×</button>
+                        <button @click.stop="selectedFile = null" class="remove-file-btn">
+                          <BaseIcon name="close" :size="16" />
+                        </button>
                       </div>
                     </div>
                   </div>
