@@ -19,17 +19,16 @@ import jakarta.servlet.http.HttpServletResponse;
 @EnableWebMvc
 public class WebConfig implements WebMvcConfigurer {
     @Override
-    public void addCorsMappings(CorsRegistry registry) {
+    public void addCorsMappings(@NonNull CorsRegistry registry) {
         registry.addMapping("/**")
             .allowedOrigins("*")
-            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")  // Explicitly list all methods
+            .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
             .allowedHeaders("*")
             .exposedHeaders("*");
     }
     
     @Override
-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // Ensure HLS files are served with correct content types
+    public void addResourceHandlers(@NonNull ResourceHandlerRegistry registry) {
         registry.addResourceHandler("/hls/**")
             .addResourceLocations("content/**")
             .setCacheControl(CacheControl.maxAge(3600, TimeUnit.SECONDS))

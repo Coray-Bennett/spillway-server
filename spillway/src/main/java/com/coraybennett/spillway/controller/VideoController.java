@@ -148,12 +148,10 @@ public class VideoController {
         
         Video video = videoOpt.get();
         
-        // Check if user has permission (is uploader)
         if (!user.getId().equals(video.getUploadedBy().getId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         
-        // Update video fields (only update fields that should be editable)
         video.setTitle(videoDetails.getTitle());
         video.setDescription(videoDetails.getDescription());
         video.setGenre(videoDetails.getGenre());

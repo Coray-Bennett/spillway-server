@@ -70,10 +70,8 @@ public class VideoConversionService {
                 throw new VideoConversionException("FFmpeg conversion failed with exit code: " + exitCode);
             }
             
-            // Process the playlist file
             processPlaylistFile(outputPlaylist, video.getId());
             
-            // Update video status to completed
             video.setConversionStatus(ConversionStatus.COMPLETED);
             video.setConversionProgress(100);
             video.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, video.getId()));
