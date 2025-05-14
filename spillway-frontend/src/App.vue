@@ -5,20 +5,20 @@
       <filter id="wave-filter">
         <feTurbulence 
           type="turbulence" 
-          baseFrequency="0.01" 
+          baseFrequency="0.02" 
           numOctaves="2" 
           seed="2">
           <animate 
             attributeName="baseFrequency" 
-            dur="20s" 
-            values="0.01;0.02;0.01" 
+            dur="60s" 
+            values="0.02;0.025;0.02" 
             repeatCount="indefinite" />
         </feTurbulence>
-        <feDisplacementMap in="SourceGraphic" scale="8">
+        <feDisplacementMap in="SourceGraphic" scale="5">
           <animate 
             attributeName="scale" 
-            dur="15s" 
-            values="5;10;5" 
+            dur="45s" 
+            values="5;8;5" 
             repeatCount="indefinite" />
         </feDisplacementMap>
       </filter>
@@ -86,9 +86,8 @@ function handleLogout() {
 </script>
 
 <style scoped>
-
 /* Add the lattice background to the app container */
-.app::before {
+ .app::before {
   content: '';
   position: fixed;
   inset: -50%;
