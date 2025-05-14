@@ -33,11 +33,9 @@ public class PlaylistController {
 
     @PostMapping
     public ResponseEntity<Playlist> createPlaylist(@RequestBody Playlist playlist, Principal principal) {
-        // Get current user
         User user = userRepository.findByUsername(principal.getName())
             .orElseThrow(() -> new RuntimeException("User not found"));
         
-        // Set the creator
         playlist.setCreatedBy(user);
         
         Playlist savedPlaylist = playlistRepository.save(playlist);
@@ -78,12 +76,10 @@ public class PlaylistController {
         
         Playlist playlist = playlistOpt.get();
         
-        // Check if user has permission (is the creator)
         if (!playlist.getCreatedBy().getId().equals(user.getId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         
-        // Update playlist properties
         playlist.setName(playlistDetails.getName());
         playlist.setDescription(playlistDetails.getDescription());
         
@@ -111,15 +107,12 @@ public class PlaylistController {
         Playlist playlist = playlistOpt.get();
         Video video = videoOpt.get();
         
-        // Check if user has permission
         if (!playlist.getCreatedBy().getId().equals(user.getId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         
-        // Update video with playlist relationship
         video.setPlaylist(playlist);
         
-        // If details are provided, update episode/season info
         if (details != null) {
             if (details.getSeasonNumber() != null) {
                 video.setSeasonNumber(details.getSeasonNumber());
@@ -153,17 +146,14 @@ public class PlaylistController {
         Playlist playlist = playlistOpt.get();
         Video video = videoOpt.get();
         
-        // Check if user has permission
         if (!playlist.getCreatedBy().getId().equals(user.getId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         
-        // Check if video is actually in this playlist
         if (!playlist.equals(video.getPlaylist())) {
             return ResponseEntity.badRequest().body("Video is not in this playlist");
         }
-        
-        // Remove video from playlist
+
         video.setPlaylist(null);
         video.setSeasonNumber(null);
         video.setEpisodeNumber(null);

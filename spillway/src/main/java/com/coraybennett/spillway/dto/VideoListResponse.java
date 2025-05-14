@@ -19,8 +19,8 @@ public class VideoListResponse {
     private String description;
     private Integer seasonNumber;
     private Integer episodeNumber;
-    private String playlistName;  // Just the name, not the whole object
-    private String uploaderUsername; // Just the username
+    private String playlistName;
+    private String uploaderUsername;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     
