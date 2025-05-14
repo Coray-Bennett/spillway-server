@@ -13,6 +13,7 @@ export const useAuthStore = defineStore('auth', {
   
   getters: {
     isAuthenticated: (state) => !!state.token,
+    currentUsername: (state) => state.user?.username || null,
   },
   
   actions: {
@@ -50,8 +51,9 @@ export const useAuthStore = defineStore('auth', {
         localStorage.setItem('token', this.token)
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`
         
-        // Set user (you might want to decode JWT or fetch user details)
+        // Decode JWT to get user info or just store username
         this.user = { username }
+        localStorage.setItem('username', username)
         
         return { success: true }
       } catch (error) {
@@ -66,12 +68,18 @@ export const useAuthStore = defineStore('auth', {
       this.token = null
       this.user = null
       localStorage.removeItem('token')
+      localStorage.removeItem('username')
       delete axios.defaults.headers.common['Authorization']
     },
     
     initializeAuth() {
       if (this.token) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`
+        // Restore username from localStorage
+        const username = localStorage.getItem('username')
+        if (username) {
+          this.user = { username }
+        }
       }
     }
   }
