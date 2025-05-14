@@ -28,19 +28,19 @@
         <h2 class="section-title">Features</h2>
         <div class="grid grid-3">
           <div class="feature-card card">
-            <div class="feature-icon">📹</div>
+            <BaseIcon name="upload" :size="48" class="feature-icon" />
             <h3 class="feature-title">Upload Videos</h3>
             <p class="feature-desc">Upload your videos and convert them to HLS for streaming</p>
           </div>
           
           <div class="feature-card card">
-            <div class="feature-icon">📝</div>
+            <BaseIcon name="playlist" :size="48" class="feature-icon" />
             <h3 class="feature-title">Create Playlists</h3>
             <p class="feature-desc">Organize your videos into seasons and episodes</p>
           </div>
           
           <div class="feature-card card">
-            <div class="feature-icon">▶️</div>
+            <BaseIcon name="play" :size="48" class="feature-icon" />
             <h3 class="feature-title">Stream Anywhere</h3>
             <p class="feature-desc">Watch your content on any device with HLS streaming</p>
           </div>
@@ -52,11 +52,22 @@
 
 <script setup>
 import { useAuthStore } from '../stores/auth'
+import BaseIcon from '../components/icons/BaseIcon.vue'
 
 const authStore = useAuthStore()
 </script>
 
 <style scoped>
+.feature-icon {
+  color: var(--accent-color);
+  margin-bottom: 1rem;
+  transition: var(--transition);
+}
+
+.feature-card:hover .feature-icon {
+  transform: scale(1.1) rotate(5deg);
+}
+
 .hero {
   text-align: center;
   max-width: 800px;

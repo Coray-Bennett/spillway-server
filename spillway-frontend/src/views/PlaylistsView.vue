@@ -5,7 +5,8 @@
         <div class="header-content">
           <h1 class="page-title">Playlists</h1>
           <router-link to="/upload" class="btn btn-primary">
-            <span>+</span> Create Playlist
+            <BaseIcon name="plus" :size="16" />
+            Create Playlist
           </router-link>
         </div>
       </header>
@@ -15,7 +16,7 @@
       </div>
       
       <div v-else-if="playlists.length === 0" class="empty-state">
-        <div class="empty-icon">📚</div>
+        <BaseIcon name="folder" :size="64" class="empty-icon" />
         <h2 class="empty-title">No playlists yet</h2>
         <p class="empty-text">Start by creating your first playlist</p>
         <router-link to="/upload" class="btn btn-primary">
@@ -28,7 +29,10 @@
           <div class="playlist-header">
             <h3 class="playlist-title">{{ playlist.name }}</h3>
             <button @click="togglePlaylist(playlist.id)" class="btn btn-secondary btn-icon">
-              {{ expandedPlaylists.has(playlist.id) ? '−' : '+' }}
+              <BaseIcon 
+                :name="expandedPlaylists.has(playlist.id) ? 'collapse' : 'expand'" 
+                :size="20"
+              />
             </button>
           </div>
           
@@ -92,6 +96,7 @@
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
 import { useVideoStore } from '../stores/video'
+import BaseIcon from '../components/icons/BaseIcon.vue'
 
 const videoStore = useVideoStore()
 const playlists = ref([])
@@ -163,6 +168,12 @@ function formatStatus(status) {
 </script>
 
 <style scoped>
+.empty-icon {
+  color: var(--accent-color);
+  opacity: 0.5;
+  margin-bottom: 1rem;
+}
+
 .header-content {
   display: flex;
   justify-content: space-between;

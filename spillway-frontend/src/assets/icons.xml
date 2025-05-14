@@ -58,4 +58,14 @@
   <symbol id="icon-spillway" viewBox="0 0 32 32">
     <path d="M16 2L4 9v6c0 9.389 5.607 17 12 17s12-7.611 12-17V9L16 2zm-3 16a3 3 0 116 0 3 3 0 01-6 0z"/>
   </symbol>
+
+  <!-- Empty/Folder Icon -->
+  <symbol id="icon-folder-empty" viewBox="0 0 24 24">
+    <path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z M19,18H5V8H19V18Z"/>
+  </symbol>
+
+  <!-- Warning Icon -->
+  <symbol id="icon-warning" viewBox="0 0 24 24">
+    <path d="M12 2L1 21h22M12 6l7.53 13H4.47M11 10v4h2v-4m-1 6.5a1 1 0 100 2 1 1 0 100-2z"/>
+  </symbol>
 </svg>
