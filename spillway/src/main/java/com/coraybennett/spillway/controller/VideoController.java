@@ -3,7 +3,10 @@ package com.coraybennett.spillway.controller;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.security.Principal;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
@@ -13,10 +16,16 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.coraybennett.spillway.dto.VideoListResponse;
+import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
+import com.coraybennett.spillway.repository.UserRepository;
+import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.VideoService;
 
 @RestController
@@ -25,9 +34,18 @@ public class VideoController {
     private final String CONTENT_PATH_PREFIX = "content/";
     private final VideoService videoService;
 
+    private final VideoRepository videoRepository;
+    private final UserRepository userRepository;
+
     @Autowired
-    public VideoController(VideoService videoService) {
+    public VideoController(
+        VideoService videoService, 
+        VideoRepository videoRepository,
+        UserRepository userRepository
+    ) {
         this.videoService = videoService;
+        this.videoRepository = videoRepository;
+        this.userRepository = userRepository;
     }
 
     @GetMapping("/{id}")
@@ -103,6 +121,44 @@ public class VideoController {
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    @GetMapping("/my-videos")
+    public ResponseEntity<List<VideoListResponse>> getMyVideos(Principal principal) {
+        User user = userRepository.findByUsername(principal.getName())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+            
+        List<Video> myVideos = videoRepository.findByUploadedBy(user);
+        List<VideoListResponse> videoResponses = myVideos.stream()
+            .map(VideoListResponse::new)
+            .collect(Collectors.toList());
+            
+        return ResponseEntity.ok(videoResponses);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateVideo(@PathVariable String id, @RequestBody Video videoDetails, Principal principal) {
+        User user = userRepository.findByUsername(principal.getName())
+            .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        Optional<Video> videoOpt = videoService.getVideoById(id);
+        if (videoOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        Video video = videoOpt.get();
+        
+        if (!user.getId().equals(video.getUploadedBy().getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        video.setTitle(videoDetails.getTitle());
+        video.setDescription(videoDetails.getDescription());
+        video.setGenre(videoDetails.getGenre());
+        
+        Video updatedVideo = videoRepository.save(video);
+        
+        return ResponseEntity.ok(new VideoListResponse(updatedVideo));
     }
     
     ByteArrayResource fileToByteArrayResource(String path) throws IOException {

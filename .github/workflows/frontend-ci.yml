@@ -1,0 +1,56 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+    paths:
+      - 'spillway-frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'spillway-frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: spillway-frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./spillway-frontend
+      run: npm ci
+    
+    - name: Run linting
+      working-directory: ./spillway-frontend
+      run: npm run lint --if-present
+    
+    - name: Run unit tests
+      working-directory: ./spillway-frontend
+      run: npm run test:unit --if-present
+    
+    - name: Build production bundle
+      working-directory: ./spillway-frontend
+      run: npm run build
+      env:
+        VITE_API_BASE_URL: http://localhost:8081
+    
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-build-${{ matrix.node-version }}
+        path: spillway-frontend/dist/
+        retention-days: 7

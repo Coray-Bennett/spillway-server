@@ -2,6 +2,8 @@ package com.coraybennett.spillway.model;
 
 import java.time.LocalDateTime;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -54,6 +56,7 @@ public class Video {
     
     @ManyToOne
     @JoinColumn(name = "playlist_id")
+    @JsonBackReference("playlist-videos")
     private Playlist playlist;
     
     @Column(nullable = false)
@@ -63,6 +66,7 @@ public class Video {
 
     @ManyToOne
     @JoinColumn(name = "uploaded_by_user_id", nullable = false)
+    @JsonBackReference("user-videos")
     private User uploadedBy;
 
     @PrePersist

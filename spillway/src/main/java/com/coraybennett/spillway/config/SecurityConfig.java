@@ -40,15 +40,18 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/auth/**").permitAll()
+                .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers(HttpMethod.GET).permitAll()
                 .requestMatchers(HttpMethod.POST).authenticated()
+                .requestMatchers(HttpMethod.PUT).authenticated()
+                .requestMatchers(HttpMethod.DELETE).authenticated()
                 .anyRequest().permitAll()
             )
             .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
-
+    
         http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
-
+    
         return http.build();
     }
 }
