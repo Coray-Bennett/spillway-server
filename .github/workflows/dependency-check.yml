@@ -1,0 +1,58 @@
+name: Dependency Check
+
+on:
+  schedule:
+    # Run weekly on Monday at 3 AM UTC
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  backend-dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: Check for dependency updates
+      working-directory: ./spillway
+      run: mvn versions:display-dependency-updates
+    
+    - name: OWASP Dependency Check
+      working-directory: ./spillway
+      run: mvn dependency-check:check
+    
+    - name: Upload dependency check report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dependency-check-report
+        path: spillway/target/dependency-check-report.html
+        retention-days: 30
+
+  frontend-dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: spillway-frontend/package-lock.json
+    
+    - name: Check for outdated packages
+      working-directory: ./spillway-frontend
+      run: npm outdated || true
+    
+    - name: Audit dependencies
+      working-directory: ./spillway-frontend
+      run: npm audit --production

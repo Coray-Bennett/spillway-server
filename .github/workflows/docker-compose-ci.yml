@@ -1,0 +1,101 @@
+name: Docker Compose CI
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+    paths:
+      - 'spillway/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker-compose-ci.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'spillway/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker-compose-ci.yml'
+
+jobs:
+  docker-compose-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: Build Spring Boot application
+      working-directory: ./spillway
+      run: mvn clean package -DskipTests
+    
+    - name: Build and start services
+      working-directory: ./spillway
+      run: |
+        docker compose build --no-cache
+        docker compose up -d
+    
+    - name: Show running containers
+      run: docker ps -a
+    
+    - name: Wait for services to be healthy
+      run: |
+        echo "Waiting for MySQL to be ready..."
+        timeout 60s bash -c 'until docker exec $(docker ps -q -f name=mysql) mysqladmin ping -h localhost -u root -proot --silent; do sleep 2; done' || {
+          echo "MySQL failed to start. Checking logs..."
+          docker compose -f spillway/docker-compose.yml logs mysql
+          exit 1
+        }
+        echo "MySQL is ready!"
+        
+        echo "Waiting for Spillway to be ready..."
+        timeout 120s bash -c 'until curl -sf http://localhost:8081/actuator/health; do 
+          echo "Waiting for Spillway... checking logs"
+          docker compose -f spillway/docker-compose.yml logs spillway | tail -20
+          sleep 5
+        done' || {
+          echo "Spillway failed to start. Checking full logs..."
+          docker compose -f spillway/docker-compose.yml logs spillway
+          echo "Checking all container statuses..."
+          docker ps -a
+          exit 1
+        }
+        echo "Spillway is ready!"
+    
+    - name: Check service health
+      run: |
+        echo "Checking actuator health endpoint..."
+        curl -sf http://localhost:8081/actuator/health | jq . || {
+          echo "Failed to get health status"
+          exit 1
+        }
+    
+    - name: Run basic API tests
+      run: |
+        # Test that the API is responding
+        echo "Testing root endpoint..."
+        curl -f http://localhost:8081/ || true
+        
+        echo "Testing auth endpoint..."
+        curl -X POST http://localhost:8081/auth/login \
+          -H "Content-Type: application/json" \
+          -d '{"username":"test","password":"test"}' || true
+    
+    - name: Show service logs on failure
+      if: failure()
+      working-directory: ./spillway
+      run: |
+        echo "=== Docker Compose Status ==="
+        docker compose ps
+        echo "=== MySQL Logs ==="
+        docker compose logs mysql
+        echo "=== Spillway Logs ==="
+        docker compose logs spillway
+    
+    - name: Stop services
+      if: always()
+      working-directory: ./spillway
+      run: docker compose down -v

@@ -2,6 +2,8 @@ package com.coraybennett.spillway.model;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -27,7 +29,12 @@ public class User {
     private String email;
 
     @OneToMany(mappedBy = "uploadedBy")
+    @JsonManagedReference("user-videos")
     private List<Video> uploadedVideos;
+
+    @OneToMany(mappedBy = "createdBy")
+    @JsonManagedReference("user-playlists")
+    private List<Playlist> createdPlaylists;
 
     public User() {}
 

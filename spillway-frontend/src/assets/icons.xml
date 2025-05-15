@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <!-- Upload Icon -->
+  <symbol id="icon-upload" viewBox="0 0 24 24">
+    <path d="M12 2l-8 8h5v10h6V10h5l-8-8z"/>
+  </symbol>
+  
+  <!-- Video Icon -->
+  <symbol id="icon-video" viewBox="0 0 24 24">
+    <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 2.5v-8l-4 2.5z"/>
+  </symbol>
+  
+  <!-- Play Icon -->
+  <symbol id="icon-play" viewBox="0 0 24 24">
+    <path d="M8 5v14l11-7z"/>
+  </symbol>
+  
+  <!-- Playlist Icon -->
+  <symbol id="icon-playlist" viewBox="0 0 24 24">
+    <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/>
+  </symbol>
+  
+  <!-- Add/Plus Icon -->
+  <symbol id="icon-plus" viewBox="0 0 24 24">
+    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+  </symbol>
+  
+  <!-- Remove/Close Icon -->
+  <symbol id="icon-close" viewBox="0 0 24 24">
+    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+  </symbol>
+  
+  <!-- Expand Icon -->
+  <symbol id="icon-expand" viewBox="0 0 24 24">
+    <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
+  </symbol>
+  
+  <!-- Collapse Icon -->
+  <symbol id="icon-collapse" viewBox="0 0 24 24">
+    <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
+  </symbol>
+  
+  <!-- File Icon -->
+  <symbol id="icon-file" viewBox="0 0 24 24">
+    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+  </symbol>
+  
+  <!-- Folder Icon -->
+  <symbol id="icon-folder" viewBox="0 0 24 24">
+    <path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z"/>
+  </symbol>
+  
+  <!-- Error Icon -->
+  <symbol id="icon-error" viewBox="0 0 24 24">
+    <path d="M13 13h-2V7h2m0 10h-2v-2h2M12 2A10 10 0 0 0 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2z"/>
+  </symbol>
+  
+  <!-- Logo/Brand Icon -->
+  <symbol id="icon-spillway" viewBox="0 0 32 32">
+    <path d="M16 2L4 9v6c0 9.389 5.607 17 12 17s12-7.611 12-17V9L16 2zm-3 16a3 3 0 116 0 3 3 0 01-6 0z"/>
+  </symbol>
+
+  <!-- Empty/Folder Icon -->
+  <symbol id="icon-folder-empty" viewBox="0 0 24 24">
+    <path d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z M19,18H5V8H19V18Z"/>
+  </symbol>
+
+  <!-- Warning Icon -->
+  <symbol id="icon-warning" viewBox="0 0 24 24">
+    <path d="M12 2L1 21h22M12 6l7.53 13H4.47M11 10v4h2v-4m-1 6.5a1 1 0 100 2 1 1 0 100-2z"/>
+  </symbol>
+
+  <!-- Edit Icon -->
+  <symbol id="icon-edit" viewBox="0 0 24 24">
+    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+  </symbol>
+
+  <!-- Trash Icon -->
+  <symbol id="icon-trash" viewBox="0 0 24 24">
+    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+  </symbol>
+</svg>

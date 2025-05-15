@@ -1,0 +1,75 @@
+name: Main CI Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  backend:
+    uses: ./.github/workflows/backend-ci.yml
+  
+  frontend:
+    uses: ./.github/workflows/frontend-ci.yml
+  
+  docker-compose:
+    uses: ./.github/workflows/docker-compose-ci.yml
+    needs: [backend]
+  
+  integration-tests:
+    uses: ./.github/workflows/integration-tests.yml
+    needs: [backend]
+  
+  create-release:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [backend, frontend, docker-compose, integration-tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download backend artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: spillway-jar
+        path: spillway/target/
+    
+    - name: Download frontend artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: frontend-build-20.x
+        path: spillway-frontend/dist/
+    
+    - name: Create frontend archive
+      run: |
+        cd spillway-frontend/dist
+        tar -czf ../../frontend-dist.tar.gz *
+        cd ../..
+    
+    - name: Generate release tag
+      id: tag
+      run: echo "tag=v$(date +'%Y%m%d.%H%M%S')" >> $GITHUB_OUTPUT
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          spillway/target/*.jar
+          frontend-dist.tar.gz
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: Release ${{ steps.tag.outputs.tag }}
+        body: |
+          Automated release from main branch
+          
+          ## Changes
+          - Backend JAR included
+          - Frontend build included
+          
+          Commit: ${{ github.sha }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
