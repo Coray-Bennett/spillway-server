@@ -1,3 +1,4 @@
 .vscode
 context.ignore
 ctxport
+.DS_Store
