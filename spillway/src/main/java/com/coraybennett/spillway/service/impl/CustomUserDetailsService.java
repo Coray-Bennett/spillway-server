@@ -3,8 +3,10 @@ package com.coraybennett.spillway.service.impl;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
 import org.springframework.security.core.userdetails.User.UserBuilder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
@@ -16,7 +18,8 @@ import com.coraybennett.spillway.service.api.UserService;
  * Implements both Spring Security's UserDetailsService and our custom UserService.
  */
 @Service
-public class CustomUserDetailsService implements UserService {
+@Primary
+public class CustomUserDetailsService implements UserService, UserDetailsService {
     
     private final UserRepository userRepository;
     

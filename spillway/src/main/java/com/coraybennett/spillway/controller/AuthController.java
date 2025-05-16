@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.coraybennett.spillway.dto.AuthRequest;
 import com.coraybennett.spillway.dto.AuthResponse;
-import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.service.api.AuthService;
 
 /**
@@ -38,9 +37,11 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody AuthRequest authRequest) {
         try {
-            User user = authService.register(authRequest.getUsername(), 
-                                           authRequest.getPassword(),
-                                           authRequest.getEmail());
+            authService.register(
+                authRequest.getUsername(), 
+                authRequest.getPassword(),
+                authRequest.getEmail()
+            );
             return ResponseEntity.ok("User registered successfully");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());

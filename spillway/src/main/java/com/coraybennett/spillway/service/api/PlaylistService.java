@@ -3,7 +3,6 @@ package com.coraybennett.spillway.service.api;
 import java.util.List;
 import java.util.Optional;
 
-import com.coraybennett.spillway.dto.PlaylistVideoDetails;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
@@ -61,7 +60,7 @@ public interface PlaylistService {
      * Gets videos associated with a playlist.
      * 
      * @param playlistId ID of the playlist
-     * @return List of video details in the playlist
+     * @return List of videos in the playlist
      */
-    List<PlaylistVideoDetails> getPlaylistVideos(String playlistId);
+    List<Video> getPlaylistVideos(String playlistId);
 }

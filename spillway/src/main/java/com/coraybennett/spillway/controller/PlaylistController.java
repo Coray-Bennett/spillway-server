@@ -63,9 +63,9 @@ public class PlaylistController {
     }
 
     @GetMapping("/{id}/videos")
-    public ResponseEntity<List<PlaylistVideoDetails>> getPlaylistVideos(@PathVariable String id) {
+    public ResponseEntity<List<Video>> getPlaylistVideos(@PathVariable String id) {
         try {
-            List<PlaylistVideoDetails> videos = playlistService.getPlaylistVideos(id);
+            List<Video> videos = playlistService.getPlaylistVideos(id);
             return ResponseEntity.ok(videos);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
@@ -97,7 +97,7 @@ public class PlaylistController {
             
             Playlist playlist = playlistOpt.get();
             
-            if (!playlist.getOwner().getId().equals(user.getId())) {
+            if (!playlist.getCreatedBy().getId().equals(user.getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
             
@@ -138,12 +138,11 @@ public class PlaylistController {
             
             Playlist playlist = playlistOpt.get();
             
-            if (!playlist.getOwner().getId().equals(user.getId())) {
+            if (!playlist.getCreatedBy().getId().equals(user.getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
             
-            // Add video to playlist and update season/episode if provided
-            Playlist updatedPlaylist = playlistService.addVideoToPlaylist(playlistId, videoId);
+            playlistService.addVideoToPlaylist(playlistId, videoId);
             
             if (details != null) {
                 Video video = videoOpt.get();
@@ -181,7 +180,7 @@ public class PlaylistController {
             
             Playlist playlist = playlistOpt.get();
             
-            if (!playlist.getOwner().getId().equals(user.getId())) {
+            if (!playlist.getCreatedBy().getId().equals(user.getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
             

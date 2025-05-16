@@ -3,13 +3,11 @@ package com.coraybennett.spillway.service.impl;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.coraybennett.spillway.dto.PlaylistVideoDetails;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
@@ -37,7 +35,7 @@ public class DefaultPlaylistService implements PlaylistService {
         Playlist playlist = new Playlist();
         playlist.setName(name);
         playlist.setDescription(description);
-        playlist.setOwner(user);
+        playlist.setCreatedBy(user);
         playlist.setVideos(new ArrayList<>());
         return playlistRepository.save(playlist);
     }
@@ -94,21 +92,10 @@ public class DefaultPlaylistService implements PlaylistService {
     }
 
     @Override
-    public List<PlaylistVideoDetails> getPlaylistVideos(String playlistId) {
+    public List<Video> getPlaylistVideos(String playlistId) {
         Playlist playlist = playlistRepository.findById(playlistId)
                 .orElseThrow(() -> new IllegalArgumentException("Playlist not found: " + playlistId));
         
-        return playlist.getVideos().stream()
-                .map(video -> new PlaylistVideoDetails(
-                    video.getId(),
-                    video.getTitle(),
-                    video.getDescription(),
-                    video.getType(),
-                    video.getLength(),
-                    video.getPlaylistUrl(),
-                    video.getSeasonNumber(),
-                    video.getEpisodeNumber()
-                ))
-                .collect(Collectors.toList());
+        return playlist.getVideos();
     }
 }
