@@ -11,4 +11,5 @@ import com.coraybennett.spillway.model.User;
 @Repository
 public interface PlaylistRepository extends JpaRepository<Playlist, String> {
     List<Playlist> findByCreatedBy(User user);
+    List<Playlist> findByCreatedById(String userId);
 }

@@ -61,6 +61,21 @@ public interface VideoService {
     List<Video> listVideos(String userId);
     
     /**
+     * Updates a video with new information.
+     * 
+     * @param video The video with updated information
+     * @return The updated video
+     */
+    Video updateVideo(Video video);
+    
+    /**
+     * Gets the video conversion service.
+     * 
+     * @return The video conversion service
+     */
+    VideoConversionService getVideoConversionService();
+    
+    /**
      * Record class for tracking video conversion progress.
      */
     public static record ConversionProgress(

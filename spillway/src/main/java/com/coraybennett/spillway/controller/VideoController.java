@@ -3,6 +3,8 @@ package com.coraybennett.spillway.controller;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.Principal;
 import java.util.List;
 import java.util.Optional;
@@ -24,28 +26,33 @@ import org.springframework.web.bind.annotation.RestController;
 import com.coraybennett.spillway.dto.VideoListResponse;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
-import com.coraybennett.spillway.repository.UserRepository;
 import com.coraybennett.spillway.repository.VideoRepository;
-import com.coraybennett.spillway.service.VideoService;
+import com.coraybennett.spillway.service.api.StorageService;
+import com.coraybennett.spillway.service.api.UserService;
+import com.coraybennett.spillway.service.api.VideoService;
 
+/**
+ * Controller handling video-related operations.
+ */
 @RestController
 @RequestMapping("/video")
 public class VideoController {
-    private final String CONTENT_PATH_PREFIX = "content/";
     private final VideoService videoService;
-
+    private final UserService userService;
     private final VideoRepository videoRepository;
-    private final UserRepository userRepository;
+    private final StorageService storageService;
 
     @Autowired
     public VideoController(
         VideoService videoService, 
+        UserService userService,
         VideoRepository videoRepository,
-        UserRepository userRepository
+        StorageService storageService
     ) {
         this.videoService = videoService;
+        this.userService = userService;
         this.videoRepository = videoRepository;
-        this.userRepository = userRepository;
+        this.storageService = storageService;
     }
 
     @GetMapping("/{id}")
@@ -76,20 +83,23 @@ public class VideoController {
         }
 
         String playlistFile = id + ".m3u8";
+        Path playlistPath = Paths.get(videoService.getVideoConversionService().getOutputDirectory().toString(), 
+                                      id, 
+                                      playlistFile);
         
         final HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("application/vnd.apple.mpegurl"));
         headers.set("Content-Disposition", "inline;filename=" + playlistFile);
         
         try {
-            ByteArrayResource playlist = fileToByteArrayResource(
-                CONTENT_PATH_PREFIX + String.format("%s/%s", id, playlistFile));
-            
-            if (playlist == null) {
+            if (!storageService.exists(playlistPath)) {
                 return ResponseEntity.notFound().build();
             }
             
-            return new ResponseEntity<>(playlist, headers, HttpStatus.OK);
+            ByteArrayResource resource = new ByteArrayResource(
+                Files.readAllBytes(playlistPath));
+                
+            return new ResponseEntity<>(resource, headers, HttpStatus.OK);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
@@ -105,19 +115,23 @@ public class VideoController {
             return ResponseEntity.notFound().build();
         }
         
+        Path segmentPath = Paths.get(videoService.getVideoConversionService().getOutputDirectory().toString(),
+                                   id,
+                                   filename);
+        
         HttpHeaders headers = new HttpHeaders();
         headers.set("Content-Type", "video/mp2t");
         headers.set("Content-Disposition", "inline;filename=" + filename);
         
         try {
-            ByteArrayResource tsVideo = fileToByteArrayResource(
-                CONTENT_PATH_PREFIX + String.format("%s/%s", id, filename));
-            
-            if (tsVideo == null) {
+            if (!storageService.exists(segmentPath)) {
                 return ResponseEntity.notFound().build();
             }
             
-            return new ResponseEntity<>(tsVideo, headers, HttpStatus.OK);
+            ByteArrayResource resource = new ByteArrayResource(
+                Files.readAllBytes(segmentPath));
+                
+            return new ResponseEntity<>(resource, headers, HttpStatus.OK);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
@@ -125,10 +139,13 @@ public class VideoController {
 
     @GetMapping("/my-videos")
     public ResponseEntity<List<VideoListResponse>> getMyVideos(Principal principal) {
-        User user = userRepository.findByUsername(principal.getName())
-            .orElseThrow(() -> new RuntimeException("User not found"));
-            
-        List<Video> myVideos = videoRepository.findByUploadedBy(user);
+        Optional<User> userOpt = userService.findByUsername(principal.getName());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        User user = userOpt.get();
+        List<Video> myVideos = videoService.listVideos(user.getId());
         List<VideoListResponse> videoResponses = myVideos.stream()
             .map(VideoListResponse::new)
             .collect(Collectors.toList());
@@ -138,9 +155,12 @@ public class VideoController {
 
     @PutMapping("/{id}")
     public ResponseEntity<?> updateVideo(@PathVariable String id, @RequestBody Video videoDetails, Principal principal) {
-        User user = userRepository.findByUsername(principal.getName())
-            .orElseThrow(() -> new RuntimeException("User not found"));
+        Optional<User> userOpt = userService.findByUsername(principal.getName());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         
+        User user = userOpt.get();
         Optional<Video> videoOpt = videoService.getVideoById(id);
         if (videoOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -159,15 +179,5 @@ public class VideoController {
         Video updatedVideo = videoRepository.save(video);
         
         return ResponseEntity.ok(new VideoListResponse(updatedVideo));
-    }
-    
-    ByteArrayResource fileToByteArrayResource(String path) throws IOException {
-        File file = new File(path);
-        if (!file.exists()) {
-            return null;
-        }
-        
-        byte[] bytes = Files.readAllBytes(file.toPath());
-        return new ByteArrayResource(bytes);
     }
 }
