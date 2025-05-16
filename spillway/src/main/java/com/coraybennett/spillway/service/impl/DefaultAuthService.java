@@ -1,7 +1,5 @@
 package com.coraybennett.spillway.service.impl;
 
-import java.util.Optional;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -61,9 +59,7 @@ public class DefaultAuthService implements AuthService {
         final UserDetails userDetails = userService.loadUserByUsername(authRequest.getUsername());
         final String token = jwtUtil.generateToken(userDetails);
         
-        User user = userService.findByUsername(authRequest.getUsername()).orElseThrow();
-        
-        return new AuthResponse(token, user.getId(), user.getUsername());
+        return new AuthResponse(token);
     }
 
     @Override
@@ -86,7 +82,7 @@ public class DefaultAuthService implements AuthService {
     @Override
     public boolean validateToken(String token) {
         try {
-            return jwtUtil.validateToken(token, userService.loadUserByUsername(jwtUtil.getUsernameFromToken(token)));
+            return jwtUtil.validateToken(token, userService.loadUserByUsername(jwtUtil.extractUsername(token)));
         } catch (Exception e) {
             return false;
         }
@@ -95,7 +91,7 @@ public class DefaultAuthService implements AuthService {
     @Override
     public User getUserFromToken(String token) {
         try {
-            String username = jwtUtil.getUsernameFromToken(token);
+            String username = jwtUtil.extractUsername(token);
             return userService.findByUsername(username).orElse(null);
         } catch (Exception e) {
             return null;
