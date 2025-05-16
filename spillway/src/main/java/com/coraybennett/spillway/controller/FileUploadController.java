@@ -18,20 +18,22 @@ import com.coraybennett.spillway.dto.VideoResponse;
 import com.coraybennett.spillway.dto.VideoUploadRequest;
 import com.coraybennett.spillway.exception.VideoConversionException;
 import com.coraybennett.spillway.model.User;
-import com.coraybennett.spillway.repository.UserRepository;
-import com.coraybennett.spillway.service.VideoService;
+import com.coraybennett.spillway.service.api.UserService;
+import com.coraybennett.spillway.service.api.VideoService;
 
+/**
+ * Controller handling file upload operations.
+ */
 @RestController
 @RequestMapping("/upload")
 public class FileUploadController {
     private final VideoService videoService;
+    private final UserService userService;
 
     @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    public FileUploadController(VideoService videoService) {
+    public FileUploadController(VideoService videoService, UserService userService) {
         this.videoService = videoService;
+        this.userService = userService;
     }
 
     @PostMapping("/video/metadata")
@@ -40,7 +42,7 @@ public class FileUploadController {
         Principal principal
     ) {
         try {
-            User user = userRepository.findByUsername(principal.getName())
+            User user = userService.findByUsername(principal.getName())
                 .orElseThrow(() -> new RuntimeException("User not found"));
             VideoResponse response = videoService.createVideo(metadata, user);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -61,7 +63,7 @@ public class FileUploadController {
                     .body("Video with id " + videoId + " not found.");
             }
             
-            User user = userRepository.findByUsername(principal.getName())
+            User user = userService.findByUsername(principal.getName())
                 .orElseThrow(() -> new RuntimeException("User not found"));
             
             String uploaderId = videoService.getVideoById(videoId).get().getUploadedBy().getId(); 

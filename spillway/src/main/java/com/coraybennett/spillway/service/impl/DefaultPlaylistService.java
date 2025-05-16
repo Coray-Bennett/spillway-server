@@ -50,9 +50,7 @@ public class DefaultPlaylistService implements PlaylistService {
     @Override
     public List<Playlist> listPlaylists(String userId) {
         if (userId != null && !userId.isEmpty()) {
-            User user = new User();
-            user.setId(userId);
-            return playlistRepository.findByOwner(user);
+            return playlistRepository.findByCreatedById(userId);
         } else {
             return playlistRepository.findAll();
         }

@@ -12,79 +12,110 @@ import org.springframework.web.bind.annotation.*;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.model.User;
-import com.coraybennett.spillway.repository.PlaylistRepository;
-import com.coraybennett.spillway.repository.VideoRepository;
-import com.coraybennett.spillway.repository.UserRepository;
 import com.coraybennett.spillway.dto.PlaylistVideoDetails;
+import com.coraybennett.spillway.service.api.PlaylistService;
+import com.coraybennett.spillway.service.api.UserService;
+import com.coraybennett.spillway.service.api.VideoService;
 
+/**
+ * Controller handling playlist operations.
+ */
 @RestController
 @RequestMapping("/playlist")
 public class PlaylistController {
-    private final PlaylistRepository playlistRepository;
-    private final VideoRepository videoRepository;
-    private final UserRepository userRepository;
+    private final PlaylistService playlistService;
+    private final VideoService videoService;
+    private final UserService userService;
 
     @Autowired
-    public PlaylistController(PlaylistRepository playlistRepository, VideoRepository videoRepository, UserRepository userRepository) {
-        this.playlistRepository = playlistRepository;
-        this.videoRepository = videoRepository;
-        this.userRepository = userRepository;
+    public PlaylistController(
+            PlaylistService playlistService, 
+            VideoService videoService, 
+            UserService userService) {
+        this.playlistService = playlistService;
+        this.videoService = videoService;
+        this.userService = userService;
     }
 
     @PostMapping
     public ResponseEntity<Playlist> createPlaylist(@RequestBody Playlist playlist, Principal principal) {
-        User user = userRepository.findByUsername(principal.getName())
-            .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        playlist.setCreatedBy(user);
-        
-        Playlist savedPlaylist = playlistRepository.save(playlist);
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedPlaylist);
+        try {
+            User user = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Playlist createdPlaylist = playlistService.createPlaylist(
+                playlist.getName(), 
+                playlist.getDescription(), 
+                user
+            );
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(createdPlaylist);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<Playlist> getPlaylist(@PathVariable String id) {
-        Optional<Playlist> playlist = playlistRepository.findById(id);
+        Optional<Playlist> playlist = playlistService.getPlaylistById(id);
         return playlist.map(ResponseEntity::ok)
                       .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{id}/videos")
-    public ResponseEntity<List<Video>> getPlaylistVideos(@PathVariable String id) {
-        List<Video> videos = videoRepository.findByPlaylistIdOrderBySeasonNumberAscEpisodeNumberAsc(id);
-        return ResponseEntity.ok(videos);
+    public ResponseEntity<List<PlaylistVideoDetails>> getPlaylistVideos(@PathVariable String id) {
+        try {
+            List<PlaylistVideoDetails> videos = playlistService.getPlaylistVideos(id);
+            return ResponseEntity.ok(videos);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     @GetMapping("/my-playlists")
     public ResponseEntity<List<Playlist>> getMyPlaylists(Principal principal) {
-        User user = userRepository.findByUsername(principal.getName())
+        User user = userService.findByUsername(principal.getName())
             .orElseThrow(() -> new RuntimeException("User not found"));
             
-        List<Playlist> playlists = playlistRepository.findByCreatedBy(user);
+        List<Playlist> playlists = playlistService.listPlaylists(user.getId());
         return ResponseEntity.ok(playlists);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Playlist> updatePlaylist(@PathVariable String id, @RequestBody Playlist playlistDetails, Principal principal) {
-        User user = userRepository.findByUsername(principal.getName())
-            .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        Optional<Playlist> playlistOpt = playlistRepository.findById(id);
-        if (playlistOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
+    public ResponseEntity<Playlist> updatePlaylist(
+            @PathVariable String id, 
+            @RequestBody Playlist playlistDetails, 
+            Principal principal) {
+        try {
+            User user = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Optional<Playlist> playlistOpt = playlistService.getPlaylistById(id);
+            if (playlistOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            Playlist playlist = playlistOpt.get();
+            
+            if (!playlist.getOwner().getId().equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            // Update the playlist with new details
+            playlist.setName(playlistDetails.getName());
+            playlist.setDescription(playlistDetails.getDescription());
+            
+            // Creating a new playlist with the same ID to replace the old one
+            Playlist updatedPlaylist = playlistService.createPlaylist(
+                    playlist.getName(),
+                    playlist.getDescription(),
+                    user
+            );
+            
+            return ResponseEntity.ok(updatedPlaylist);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
-        
-        Playlist playlist = playlistOpt.get();
-        
-        if (!playlist.getCreatedBy().getId().equals(user.getId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        
-        playlist.setName(playlistDetails.getName());
-        playlist.setDescription(playlistDetails.getDescription());
-        
-        Playlist updatedPlaylist = playlistRepository.save(playlist);
-        return ResponseEntity.ok(updatedPlaylist);
     }
 
     @PostMapping("/{playlistId}/videos/{videoId}")
@@ -94,37 +125,42 @@ public class PlaylistController {
             @RequestBody(required = false) PlaylistVideoDetails details,
             Principal principal) {
         
-        User user = userRepository.findByUsername(principal.getName())
-            .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        Optional<Playlist> playlistOpt = playlistRepository.findById(playlistId);
-        Optional<Video> videoOpt = videoRepository.findById(videoId);
-        
-        if (playlistOpt.isEmpty() || videoOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        
-        Playlist playlist = playlistOpt.get();
-        Video video = videoOpt.get();
-        
-        if (!playlist.getCreatedBy().getId().equals(user.getId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        
-        video.setPlaylist(playlist);
-        
-        if (details != null) {
-            if (details.getSeasonNumber() != null) {
-                video.setSeasonNumber(details.getSeasonNumber());
+        try {
+            User user = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Optional<Playlist> playlistOpt = playlistService.getPlaylistById(playlistId);
+            Optional<Video> videoOpt = videoService.getVideoById(videoId);
+            
+            if (playlistOpt.isEmpty() || videoOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
             }
-            if (details.getEpisodeNumber() != null) {
-                video.setEpisodeNumber(details.getEpisodeNumber());
+            
+            Playlist playlist = playlistOpt.get();
+            
+            if (!playlist.getOwner().getId().equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
+            
+            // Add video to playlist and update season/episode if provided
+            Playlist updatedPlaylist = playlistService.addVideoToPlaylist(playlistId, videoId);
+            
+            if (details != null) {
+                Video video = videoOpt.get();
+                if (details.getSeasonNumber() != null) {
+                    video.setSeasonNumber(details.getSeasonNumber());
+                }
+                if (details.getEpisodeNumber() != null) {
+                    video.setEpisodeNumber(details.getEpisodeNumber());
+                }
+                videoService.updateVideo(video);
+            }
+            
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error adding video to playlist: " + e.getMessage());
         }
-        
-        videoRepository.save(video);
-        
-        return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{playlistId}/videos/{videoId}")
@@ -133,33 +169,29 @@ public class PlaylistController {
             @PathVariable String videoId,
             Principal principal) {
         
-        User user = userRepository.findByUsername(principal.getName())
-            .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        Optional<Playlist> playlistOpt = playlistRepository.findById(playlistId);
-        Optional<Video> videoOpt = videoRepository.findById(videoId);
-        
-        if (playlistOpt.isEmpty() || videoOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
+        try {
+            User user = userService.findByUsername(principal.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            Optional<Playlist> playlistOpt = playlistService.getPlaylistById(playlistId);
+            
+            if (playlistOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            Playlist playlist = playlistOpt.get();
+            
+            if (!playlist.getOwner().getId().equals(user.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
+            playlistService.removeVideoFromPlaylist(playlistId, videoId);
+            
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
-        
-        Playlist playlist = playlistOpt.get();
-        Video video = videoOpt.get();
-        
-        if (!playlist.getCreatedBy().getId().equals(user.getId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        
-        if (!playlist.equals(video.getPlaylist())) {
-            return ResponseEntity.badRequest().body("Video is not in this playlist");
-        }
-
-        video.setPlaylist(null);
-        video.setSeasonNumber(null);
-        video.setEpisodeNumber(null);
-        
-        videoRepository.save(video);
-        
-        return ResponseEntity.ok().build();
     }
 }

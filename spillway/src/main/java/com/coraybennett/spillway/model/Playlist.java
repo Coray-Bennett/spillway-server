@@ -112,4 +112,13 @@ public class Playlist {
     public void setCreatedBy(User createdBy) {
         this.createdBy = createdBy;
     }
+    
+    // Alias methods for PlaylistService compatibility
+    public User getOwner() {
+        return createdBy;
+    }
+    
+    public void setOwner(User owner) {
+        this.createdBy = owner;
+    }
 }

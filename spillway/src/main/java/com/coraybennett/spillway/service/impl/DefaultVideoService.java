@@ -128,11 +128,23 @@ public class DefaultVideoService implements VideoService {
     @Override
     public List<Video> listVideos(String userId) {
         if (userId != null && !userId.isEmpty()) {
-            User user = new User();
-            user.setId(userId);
-            return videoRepository.findByUploadedBy(user);
+            return videoRepository.findByUploadedById(userId);
         } else {
             return videoRepository.findAll();
         }
+    }
+    
+    @Override
+    public VideoConversionService getVideoConversionService() {
+        return videoConversionService;
+    }
+    
+    @Override
+    @Transactional
+    public Video updateVideo(Video video) {
+        if (!videoRepository.existsById(video.getId())) {
+            throw new IllegalArgumentException("Cannot update non-existent video: " + video.getId());
+        }
+        return videoRepository.save(video);
     }
 }
