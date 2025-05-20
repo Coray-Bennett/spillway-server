@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -33,16 +32,17 @@ import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
 import com.coraybennett.spillway.service.api.VideoConversionService;
+import com.coraybennett.spillway.service.enums.QualityLevel;
 
 /**
- * Generalized FFmpeg-based implementation of VideoConversionService.
+ * FFmpeg-based implementation of VideoConversionService.
  * Supports multiple video file formats and adaptive bitrate streaming with better performance.
  * Uses separate FFmpeg processes for each quality level and supports any number of quality levels.
  */
 @Service
 @Primary
-public class GeneralizedFFmpegVideoConversionService implements VideoConversionService {
-    private static final Logger logger = LoggerFactory.getLogger(GeneralizedFFmpegVideoConversionService.class);
+public class MultistreamFFmpegVideoConversionService implements VideoConversionService {
+    private static final Logger logger = LoggerFactory.getLogger(MultistreamFFmpegVideoConversionService.class);
     
     private final VideoRepository videoRepository;
     private final StorageService storageService;
@@ -66,48 +66,11 @@ public class GeneralizedFFmpegVideoConversionService implements VideoConversionS
     
     @Value("${video.encoding.segment-duration:4}")
     private int segmentDuration;
-    
-    @Value("${video.encoding.use-hardware-acceleration:false}")
-    private boolean useHardwareAcceleration;
-    
-    @Value("${video.encoding.hardware-accelerator:auto}")
-    private String hardwareAccelerator;
 
-    // Quality definitions
-    private static class QualityLevel {
-        final String name;
-        final int height;
-        final int width;
-        final String bitrate;
-        final String maxRate;
-        final String bufSize;
-        final String audioBitrate;
-        final int bandwidth;
-        
-        QualityLevel(String name, int height, int width, String bitrate, String maxRate, String bufSize, 
-                    String audioBitrate, int bandwidth) {
-            this.name = name;
-            this.height = height;
-            this.width = width;
-            this.bitrate = bitrate;
-            this.maxRate = maxRate;
-            this.bufSize = bufSize;
-            this.audioBitrate = audioBitrate;
-            this.bandwidth = bandwidth;
-        }
-    }
-    
-    // Define all possible quality levels
-    private static final QualityLevel[] ALL_QUALITY_LEVELS = {
-        new QualityLevel("2160p", 2160, 3840, "8000k", "8500k", "12000k", "192k", 8500000),
-        new QualityLevel("1080p", 1080, 1920, "5000k", "5350k", "7500k", "192k", 5350000),
-        new QualityLevel("720p", 720, 1280, "2500k", "2675k", "3750k", "128k", 2675000),
-        new QualityLevel("480p", 480, 854, "1000k", "1075k", "1500k", "128k", 1075000),
-        new QualityLevel("360p", 360, 640, "500k", "538k", "750k", "96k", 538000)
-    };
+    private static final QualityLevel[] ALL_QUALITY_LEVELS = QualityLevel.ALL_QUALITY_LEVELS;
 
     @Autowired
-    public GeneralizedFFmpegVideoConversionService(
+    public MultistreamFFmpegVideoConversionService(
             VideoRepository videoRepository, 
             StorageService storageService,
             @Value("${video.output-directory:content}") String outputDirectory) {
@@ -378,11 +341,6 @@ public class GeneralizedFFmpegVideoConversionService implements VideoConversionS
         command.add("-preset");
         command.add(encodingPreset);
         
-        // Add hardware acceleration if enabled
-        if (useHardwareAcceleration) {
-            addHardwareAcceleration(command);
-        }
-        
         // Add video encoding parameters
         command.add("-c:v");
         command.add("libx264");
@@ -442,45 +400,6 @@ public class GeneralizedFFmpegVideoConversionService implements VideoConversionS
         processPlaylistFile(playlistPath.toString(), videoId, quality.name + "_");
         
         logger.info("{} HLS playlist created successfully at {}", quality.name, playlistPath);
-    }
-
-    /**
-     * Helper method to add hardware acceleration options to the command.
-     */
-    private void addHardwareAcceleration(List<String> command) {
-        // Select the appropriate hardware accelerator
-        if ("auto".equals(hardwareAccelerator)) {
-            // Try to auto-detect - NVIDIA GPU gets priority
-            try {
-                ProcessBuilder nvidiaSmiProcess = new ProcessBuilder("nvidia-smi");
-                Process process = nvidiaSmiProcess.start();
-                int exitCode = process.waitFor();
-                
-                if (exitCode == 0) {
-                    // NVIDIA GPU detected
-                    command.add("-hwaccel");
-                    command.add("cuda");
-                    command.add("-hwaccel_output_format");
-                    command.add("cuda");
-                } else {
-                    // Try Intel QuickSync
-                    command.add("-hwaccel");
-                    command.add("qsv");
-                }
-            } catch (Exception e) {
-                // Fallback to software encoding if detection fails
-                logger.warn("Hardware acceleration detection failed: {}", e.getMessage());
-            }
-        } else {
-            // Use specified accelerator
-            command.add("-hwaccel");
-            command.add(hardwareAccelerator);
-            
-            if ("cuda".equals(hardwareAccelerator)) {
-                command.add("-hwaccel_output_format");
-                command.add("cuda");
-            }
-        }
     }
 
     /**

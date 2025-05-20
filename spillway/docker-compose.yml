@@ -28,8 +28,13 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/spillway?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
       SPRING_DATASOURCE_USERNAME: spillway
       SPRING_DATASOURCE_PASSWORD: spillway
+      VIDEO_ENCODING_USE_HARDWARE_ACCELERATION: "true"
+      VIDEO_ENCODING_HARDWARE_ACCELERATOR: "qsv"
     volumes:
-      - ./content:/content
+      - ./content:/app/content
+      - /dev/dri:/dev/dri  # Give access to Intel GPU
+    devices:
+      - /dev/dri:/dev/dri  # Map Intel GPU device
 
 volumes:
   mysql_data:
