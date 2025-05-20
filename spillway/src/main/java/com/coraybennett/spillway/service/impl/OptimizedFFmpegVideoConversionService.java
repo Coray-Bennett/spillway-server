@@ -22,9 +22,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Primary;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.context.annotation.Primary;
 
 import com.coraybennett.spillway.exception.VideoConversionException;
 import com.coraybennett.spillway.model.ConversionStatus;
@@ -81,18 +81,17 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
         this.outputDirectory = outputDirectory;
     }
 
+    /**
+     * Converts a video using separate FFmpeg commands for each quality level.
+     * This ensures each quality level is properly encoded for the full duration.
+     */
     @Override
     @Async("videoConversionExecutor")
     public CompletableFuture<Void> convertToHls(Path sourceFile, Video video) {
         Path outputPath = null;
         
         try {
-            // Validate file type
-            String filename = sourceFile.getFileName().toString();
-            if (!isVideoFileTypeSupported(filename)) {
-                throw new VideoConversionException("Unsupported video file format: " + filename);
-            }
-            
+            // Set status to in progress
             video.setConversionStatus(ConversionStatus.IN_PROGRESS);
             videoRepository.save(video);
             
@@ -102,7 +101,7 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
             
             logger.info("Starting video analysis for video: {}", video.getId());
             
-            // First, analyze the video to get its resolution
+            // Analyze the video to get its resolution
             int[] resolution = getVideoResolution(sourceFile.toAbsolutePath().toString());
             if (resolution == null) {
                 throw new VideoConversionException("Failed to determine video resolution");
@@ -112,53 +111,34 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
             int sourceHeight = resolution[1];
             logger.info("Source video resolution: {}x{}", sourceWidth, sourceHeight);
             
-            // Build optimized FFmpeg command based on source resolution
-            List<String> command = buildOptimizedFfmpegCommand(
-                sourceFile.toAbsolutePath().toString(), 
-                outputPath.toAbsolutePath().toString(),
-                video.getId(),
-                sourceWidth,
-                sourceHeight
-            );
+            // Determine which quality levels to create
+            boolean[] qualityLevels = determineQualityLevels(sourceWidth, sourceHeight);
+            boolean include480p = qualityLevels[3];
+            boolean include360p = qualityLevels[4];
             
-            logger.info("Starting FFmpeg conversion for video: {}", video.getId());
-            
-            // Execute FFmpeg command and capture output
-            ProcessBuilder processBuilder = new ProcessBuilder(command);
-            
-            // Redirect error stream for debugging
-            processBuilder.redirectErrorStream(true);
-            
-            // Start the process
-            Process process = processBuilder.start();
-            
-            // Keep track of active process for potential cancellation
-            activeConversions.put(video.getId(), process);
-            
-            // Parse FFmpeg output for progress
-            BufferedReader outputReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            parseFFmpegOutput(outputReader, video);
-            
-            // Wait for process to complete
-            int exitCode = process.waitFor();
-            activeConversions.remove(video.getId());
-            
-            // Check if the conversion succeeded
-            if (exitCode != 0) {
-                throw new VideoConversionException("FFmpeg conversion failed with exit code: " + exitCode);
+            // Process 480p if needed
+            if (include480p) {
+                logger.info("Starting 480p conversion");
+                convertQuality(sourceFile.toAbsolutePath().toString(), 
+                            outputPath.toString(), 
+                            video.getId(),
+                            "480", 854, 480, "1000k");
             }
             
-            // Verify the output files exist
-            Path masterPlaylist = Paths.get(outputPath.toString(), video.getId() + ".m3u8");
-            if (!Files.exists(masterPlaylist)) {
-                throw new VideoConversionException("Conversion failed: Master playlist file not found");
+            // Process 360p if needed
+            if (include360p) {
+                logger.info("Starting 360p conversion");
+                convertQuality(sourceFile.toAbsolutePath().toString(), 
+                            outputPath.toString(), 
+                            video.getId(),
+                            "360", 640, 360, "500k");
             }
             
-            // Create the master playlist that references the quality variants
-            createMasterPlaylist(outputPath.toAbsolutePath().toString(), video.getId(), sourceWidth, sourceHeight);
-            
-            // Process quality variant playlists to update segment URLs
-            processQualityPlaylists(outputPath.toAbsolutePath().toString(), video.getId(), sourceWidth, sourceHeight);
+            // Create the master playlist
+            createMasterPlaylist(outputPath.toAbsolutePath().toString(), 
+                                video.getId(), 
+                                sourceWidth, 
+                                sourceHeight);
             
             // Update video status
             video.setConversionStatus(ConversionStatus.COMPLETED);
@@ -173,10 +153,9 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
             
             return CompletableFuture.completedFuture(null);
             
-        } catch (VideoConversionException | IOException | InterruptedException e) {
+        } catch (Exception e) {
             logger.error("Error during video conversion: {}", e.getMessage(), e);
             
-            activeConversions.remove(video.getId());
             cleanupOnError(sourceFile, outputPath);
             
             video.setConversionStatus(ConversionStatus.FAILED);
@@ -186,6 +165,79 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
             return CompletableFuture.failedFuture(e);
         }
     }
+
+    /**
+     * Converts a single quality level using FFmpeg.
+     */
+    private void convertQuality(String sourceFile, String outputDir, String videoId, 
+                            String qualityName, int width, int height, String bitrate) 
+            throws IOException, InterruptedException, VideoConversionException {
+        
+        // Build FFmpeg command for this quality
+        List<String> command = new ArrayList<>();
+        command.add("ffmpeg");
+        command.add("-i");
+        command.add(sourceFile);
+        command.add("-preset");
+        command.add(encodingPreset);
+        command.add("-c:v");
+        command.add("libx264");
+        command.add("-c:a");
+        command.add("aac");
+        command.add("-b:a");
+        command.add("128k");
+        command.add("-vf");
+        command.add("scale=" + width + ":" + height);
+        command.add("-b:v");
+        command.add(bitrate);
+        command.add("-maxrate");
+        command.add(bitrate);
+        command.add("-bufsize");
+        command.add(bitrate);
+        command.add("-hls_time");
+        command.add("4");
+        command.add("-hls_playlist_type");
+        command.add("vod");
+        command.add("-hls_segment_filename");
+        command.add(Paths.get(outputDir, qualityName + "p_%03d.ts").toString());
+        command.add(Paths.get(outputDir, qualityName + "p.m3u8").toString());
+        
+        logger.info("FFmpeg command for {}p: {}", qualityName, String.join(" ", command));
+        
+        // Execute FFmpeg command
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        processBuilder.redirectErrorStream(true);
+        Process process = processBuilder.start();
+        
+        // Track progress
+        BufferedReader outputReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        String line;
+        while ((line = outputReader.readLine()) != null) {
+            if (Math.random() < 0.1) {
+                logger.debug("FFmpeg {}p output: {}", qualityName, line);
+            }
+        }
+        
+        // Wait for process to complete
+        int exitCode = process.waitFor();
+        
+        // Check if the conversion succeeded
+        if (exitCode != 0) {
+            throw new VideoConversionException("FFmpeg conversion for " + qualityName + "p failed with exit code: " + exitCode);
+        }
+        
+        // Verify the output files exist
+        Path playlist = Paths.get(outputDir, qualityName + "p.m3u8");
+        if (!Files.exists(playlist)) {
+            throw new VideoConversionException("Conversion failed: " + qualityName + "p playlist file not found");
+        }
+        
+        // Process the playlist to update URLs
+        processPlaylistFile(playlist.toString(), videoId, qualityName + "p_");
+        
+        logger.info("{}p HLS playlist created successfully", qualityName);
+    }
+
 
     @Override
     public boolean cancelConversion(String videoId) {
@@ -359,12 +411,17 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
     
     /**
      * Builds the optimized FFmpeg command for HLS conversion based on source resolution.
+     * Fixed parameter ordering issue.
      */
     protected List<String> buildOptimizedFfmpegCommand(String inputPath, String outputDir, String videoId, int sourceWidth, int sourceHeight) {
         List<String> command = new ArrayList<>();
         command.add("ffmpeg");
         command.add("-i");
         command.add(inputPath);
+        
+        // Add preset parameter FIRST before any mapping
+        command.add("-preset");
+        command.add(encodingPreset);  // Options: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
         
         // Use hardware acceleration if enabled
         if (useHardwareAcceleration) {
@@ -402,11 +459,15 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
                 }
             }
         }
-        
-        // Add global encoding settings
-        command.add("-preset");
-        command.add(encodingPreset);  // Options: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
-        
+
+        // Add HLS common parameters
+        command.add("-hls_time");
+        command.add(String.valueOf(segmentDuration));
+        command.add("-hls_playlist_type");
+        command.add("vod");
+        command.add("-hls_flags");
+        command.add("independent_segments");
+
         // Get quality levels based on source resolution
         boolean[] qualityLevels = determineQualityLevels(sourceWidth, sourceHeight);
         boolean include2160p = qualityLevels[0];
@@ -415,233 +476,79 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
         boolean include480p = qualityLevels[3];
         boolean include360p = qualityLevels[4];
 
-        // Create output streaming directory
-        command.add("-hls_time");
-        command.add(String.valueOf(segmentDuration));
-        command.add("-hls_playlist_type");
-        command.add("vod");
-        command.add("-hls_flags");
-        command.add("independent_segments");
+        // For a simpler approach, we'll create a single output at a time
+        List<String> finalCommand = new ArrayList<>(command);
         
-        // Create an array to keep track of all output streams for map options
-        List<String> mapOptions = new ArrayList<>();
-        int outputIndex = 0;
-        
-        // Add 2160p (4K) quality level if source is 4K or higher
-        if (include2160p) {
-            command.add("-vf");
-            command.add("scale=-2:2160");
-            command.add("-c:a");
-            command.add("aac");
-            command.add("-ar");
-            command.add("48000");
-            command.add("-c:v");
-            command.add("libx264");
-            command.add("-profile:v");
-            command.add("high");
-            command.add("-crf");
-            command.add("22");
-            command.add("-sc_threshold");
-            command.add("0");
-            command.add("-g");
-            command.add("48");
-            command.add("-keyint_min");
-            command.add("48");
-            command.add("-b:v");
-            command.add("8000k");
-            command.add("-maxrate");
-            command.add("8500k");
-            command.add("-bufsize");
-            command.add("12000k");
-            command.add("-b:a");
-            command.add("192k");
-            command.add("-hls_segment_filename");
-            command.add(Paths.get(outputDir, "2160p_%03d.ts").toString());
-            command.add(Paths.get(outputDir, "2160p.m3u8").toString());
-            
-            mapOptions.add("-map");
-            mapOptions.add("0:v:0");
-            mapOptions.add("-map");
-            mapOptions.add("0:a:0");
-            outputIndex++;
-        }
-        
-        // Add 1080p quality level if source is 1080p or higher
-        if (include1080p) {
-            command.add("-vf");
-            command.add("scale=-2:1080");
-            command.add("-c:a");
-            command.add("aac");
-            command.add("-ar");
-            command.add("48000");
-            command.add("-c:v");
-            command.add("libx264");
-            command.add("-profile:v");
-            command.add("high");
-            command.add("-crf");
-            command.add("23");
-            command.add("-sc_threshold");
-            command.add("0");
-            command.add("-g");
-            command.add("48");
-            command.add("-keyint_min");
-            command.add("48");
-            command.add("-b:v");
-            command.add("5000k");
-            command.add("-maxrate");
-            command.add("5350k");
-            command.add("-bufsize");
-            command.add("7500k");
-            command.add("-b:a");
-            command.add("192k");
-            command.add("-hls_segment_filename");
-            command.add(Paths.get(outputDir, "1080p_%03d.ts").toString());
-            command.add(Paths.get(outputDir, "1080p.m3u8").toString());
-            
-            mapOptions.add("-map");
-            mapOptions.add("0:v:0");
-            mapOptions.add("-map");
-            mapOptions.add("0:a:0");
-            outputIndex++;
-        }
-        
-        // Add 720p quality level if source is 720p or higher
-        if (include720p) {
-            command.add("-vf");
-            command.add("scale=-2:720");
-            command.add("-c:a");
-            command.add("aac");
-            command.add("-ar");
-            command.add("48000");
-            command.add("-c:v");
-            command.add("libx264");
-            command.add("-profile:v");
-            command.add("main");
-            command.add("-crf");
-            command.add("23");
-            command.add("-sc_threshold");
-            command.add("0");
-            command.add("-g");
-            command.add("48");
-            command.add("-keyint_min");
-            command.add("48");
-            command.add("-b:v");
-            command.add("2500k");
-            command.add("-maxrate");
-            command.add("2675k");
-            command.add("-bufsize");
-            command.add("3750k");
-            command.add("-b:a");
-            command.add("128k");
-            command.add("-hls_segment_filename");
-            command.add(Paths.get(outputDir, "720p_%03d.ts").toString());
-            command.add(Paths.get(outputDir, "720p.m3u8").toString());
-            
-            mapOptions.add("-map");
-            mapOptions.add("0:v:0");
-            mapOptions.add("-map");
-            mapOptions.add("0:a:0");
-            outputIndex++;
-        }
-        
-        // Add 480p quality level (always included unless source is lower)
+        // For lower resolution sources, we'll just add the appropriate quality levels
         if (include480p) {
-            command.add("-vf");
-            command.add("scale=-2:480");
-            command.add("-c:a");
-            command.add("aac");
-            command.add("-ar");
-            command.add("48000");
-            command.add("-c:v");
-            command.add("libx264");
-            command.add("-profile:v");
-            command.add("main");
-            command.add("-crf");
-            command.add("23");
-            command.add("-sc_threshold");
-            command.add("0");
-            command.add("-g");
-            command.add("48");
-            command.add("-keyint_min");
-            command.add("48");
-            command.add("-b:v");
-            command.add("1000k");
-            command.add("-maxrate");
-            command.add("1075k");
-            command.add("-bufsize");
-            command.add("1500k");
-            command.add("-b:a");
-            command.add("128k");
-            command.add("-hls_segment_filename");
-            command.add(Paths.get(outputDir, "480p_%03d.ts").toString());
-            command.add(Paths.get(outputDir, "480p.m3u8").toString());
-            
-            mapOptions.add("-map");
-            mapOptions.add("0:v:0");
-            mapOptions.add("-map");
-            mapOptions.add("0:a:0");
-            outputIndex++;
+            finalCommand.add("-vf");
+            finalCommand.add("scale=-2:480");
+            finalCommand.add("-c:a");
+            finalCommand.add("aac");
+            finalCommand.add("-ar");
+            finalCommand.add("48000");
+            finalCommand.add("-c:v");
+            finalCommand.add("libx264");
+            finalCommand.add("-profile:v");
+            finalCommand.add("main");
+            finalCommand.add("-crf");
+            finalCommand.add("23");
+            finalCommand.add("-sc_threshold");
+            finalCommand.add("0");
+            finalCommand.add("-g");
+            finalCommand.add("48");
+            finalCommand.add("-keyint_min");
+            finalCommand.add("48");
+            finalCommand.add("-b:v");
+            finalCommand.add("1000k");
+            finalCommand.add("-maxrate");
+            finalCommand.add("1075k");
+            finalCommand.add("-bufsize");
+            finalCommand.add("1500k");
+            finalCommand.add("-b:a");
+            finalCommand.add("128k");
+            finalCommand.add("-hls_segment_filename");
+            finalCommand.add(Paths.get(outputDir, "480p_%03d.ts").toString());
+            finalCommand.add(Paths.get(outputDir, "480p.m3u8").toString());
         }
         
-        // Add 360p quality level (always included for mobile/low bandwidth)
         if (include360p) {
-            command.add("-vf");
-            command.add("scale=-2:360");
-            command.add("-c:a");
-            command.add("aac");
-            command.add("-ar");
-            command.add("48000");
-            command.add("-c:v");
-            command.add("libx264");
-            command.add("-profile:v");
-            command.add("main");
-            command.add("-crf");
-            command.add("23");
-            command.add("-sc_threshold");
-            command.add("0");
-            command.add("-g");
-            command.add("48");
-            command.add("-keyint_min");
-            command.add("48");
-            command.add("-b:v");
-            command.add("500k");
-            command.add("-maxrate");
-            command.add("538k");
-            command.add("-bufsize");
-            command.add("750k");
-            command.add("-b:a");
-            command.add("96k");
-            command.add("-hls_segment_filename");
-            command.add(Paths.get(outputDir, "360p_%03d.ts").toString());
-            command.add(Paths.get(outputDir, "360p.m3u8").toString());
-            
-            mapOptions.add("-map");
-            mapOptions.add("0:v:0");
-            mapOptions.add("-map");
-            mapOptions.add("0:a:0");
-        }
-        
-        // Insert map options before all the output options (after input options)
-        int inputParamCount = 2; // -i and the input filepath
-        if (useHardwareAcceleration) {
-            inputParamCount += 2; // Add hwaccel parameters
-            if ("cuda".equals(hardwareAccelerator)) {
-                inputParamCount += 2; // Add hwaccel_output_format
-            }
-        }
-        
-        for (int i = 0; i < mapOptions.size(); i++) {
-            command.add(inputParamCount + i, mapOptions.get(i));
+            finalCommand.add("-vf");
+            finalCommand.add("scale=-2:360");
+            finalCommand.add("-c:a");
+            finalCommand.add("aac");
+            finalCommand.add("-ar");
+            finalCommand.add("48000");
+            finalCommand.add("-c:v");
+            finalCommand.add("libx264");
+            finalCommand.add("-profile:v");
+            finalCommand.add("main");
+            finalCommand.add("-crf");
+            finalCommand.add("23");
+            finalCommand.add("-sc_threshold");
+            finalCommand.add("0");
+            finalCommand.add("-g");
+            finalCommand.add("48");
+            finalCommand.add("-keyint_min");
+            finalCommand.add("48");
+            finalCommand.add("-b:v");
+            finalCommand.add("500k");
+            finalCommand.add("-maxrate");
+            finalCommand.add("538k");
+            finalCommand.add("-bufsize");
+            finalCommand.add("750k");
+            finalCommand.add("-b:a");
+            finalCommand.add("96k");
+            finalCommand.add("-hls_segment_filename");
+            finalCommand.add(Paths.get(outputDir, "360p_%03d.ts").toString());
+            finalCommand.add(Paths.get(outputDir, "360p.m3u8").toString());
         }
 
-        // Log the complete command for debugging
-        logger.info("FFmpeg command: {}", String.join(" ", command));
-        
-        return command;
+        return finalCommand;
     }
 
     /**
-     * Creates a master playlist that references all quality variants.
+     * Creates a master playlist that references all quality variants with fully qualified URLs.
      */
     private void createMasterPlaylist(String outputDirectory, String videoId, int sourceWidth, int sourceHeight) throws IOException {
         Path masterPlaylistPath = Paths.get(outputDirectory, videoId + ".m3u8");
@@ -658,37 +565,37 @@ public class OptimizedFFmpegVideoConversionService implements VideoConversionSer
         masterPlaylistContent.add("#EXT-X-VERSION:3");
         
         // Add 2160p quality variant if included
-        if (include2160p) {
+        if (include2160p && Files.exists(Paths.get(outputDirectory, "2160p.m3u8"))) {
             masterPlaylistContent.add("#EXT-X-STREAM-INF:BANDWIDTH=8500000,RESOLUTION=3840x2160");
-            masterPlaylistContent.add("2160p.m3u8");
+            masterPlaylistContent.add(String.format("%s/video/%s/playlist/2160p", baseUrl, videoId));
         }
         
         // Add 1080p quality variant if included
-        if (include1080p) {
+        if (include1080p && Files.exists(Paths.get(outputDirectory, "1080p.m3u8"))) {
             masterPlaylistContent.add("#EXT-X-STREAM-INF:BANDWIDTH=5350000,RESOLUTION=1920x1080");
-            masterPlaylistContent.add("1080p.m3u8");
+            masterPlaylistContent.add(String.format("%s/video/%s/playlist/1080p", baseUrl, videoId));
         }
         
         // Add 720p quality variant if included
-        if (include720p) {
+        if (include720p && Files.exists(Paths.get(outputDirectory, "720p.m3u8"))) {
             masterPlaylistContent.add("#EXT-X-STREAM-INF:BANDWIDTH=2675000,RESOLUTION=1280x720");
-            masterPlaylistContent.add("720p.m3u8");
+            masterPlaylistContent.add(String.format("%s/video/%s/playlist/720p", baseUrl, videoId));
         }
         
         // Add 480p quality variant if included
-        if (include480p) {
+        if (include480p && Files.exists(Paths.get(outputDirectory, "480p.m3u8"))) {
             masterPlaylistContent.add("#EXT-X-STREAM-INF:BANDWIDTH=1075000,RESOLUTION=854x480");
-            masterPlaylistContent.add("480p.m3u8");
+            masterPlaylistContent.add(String.format("%s/video/%s/playlist/480p", baseUrl, videoId));
         }
         
         // Add 360p quality variant if included
-        if (include360p) {
+        if (include360p && Files.exists(Paths.get(outputDirectory, "360p.m3u8"))) {
             masterPlaylistContent.add("#EXT-X-STREAM-INF:BANDWIDTH=538000,RESOLUTION=640x360");
-            masterPlaylistContent.add("360p.m3u8");
+            masterPlaylistContent.add(String.format("%s/video/%s/playlist/360p", baseUrl, videoId));
         }
         
         Files.write(masterPlaylistPath, masterPlaylistContent);
-        logger.info("Created master playlist at {}", masterPlaylistPath);
+        logger.info("Created master playlist at {} with fully qualified URLs", masterPlaylistPath);
     }
     
     /**

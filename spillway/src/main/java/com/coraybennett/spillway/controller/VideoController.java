@@ -72,7 +72,7 @@ public class VideoController {
     }
     
     @GetMapping("/{id}/playlist")
-    public ResponseEntity<ByteArrayResource> getVideoPlaylist(@PathVariable String id) throws IOException {
+    public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(@PathVariable String id) throws IOException {
         Optional<Video> video = videoService.getVideoById(id);
         if (video.isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -84,8 +84,50 @@ public class VideoController {
 
         String playlistFile = id + ".m3u8";
         Path playlistPath = Paths.get(videoService.getVideoConversionService().getOutputDirectory().toString(), 
-                                      id, 
-                                      playlistFile);
+                                    id, 
+                                    playlistFile);
+        
+        final HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType("application/vnd.apple.mpegurl"));
+        headers.set("Content-Disposition", "inline;filename=" + playlistFile);
+        
+        try {
+            if (!storageService.exists(playlistPath)) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            ByteArrayResource resource = new ByteArrayResource(
+                Files.readAllBytes(playlistPath));
+                
+            return new ResponseEntity<>(resource, headers, HttpStatus.OK);
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{id}/playlist/{quality}")
+    public ResponseEntity<ByteArrayResource> getVideoQualityPlaylist(
+            @PathVariable String id, 
+            @PathVariable String quality) throws IOException {
+        
+        Optional<Video> video = videoService.getVideoById(id);
+        if (video.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        if (video.get().getConversionStatus() != com.coraybennett.spillway.model.ConversionStatus.COMPLETED) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+        }
+
+        // Validate quality parameter to prevent directory traversal
+        if (!quality.matches("^[a-zA-Z0-9]+p$")) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        String playlistFile = quality + ".m3u8";
+        Path playlistPath = Paths.get(videoService.getVideoConversionService().getOutputDirectory().toString(), 
+                                    id, 
+                                    playlistFile);
         
         final HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("application/vnd.apple.mpegurl"));
