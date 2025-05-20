@@ -1,13 +1,12 @@
 # Spillway
 
 *Spillway* is a video upload and streaming application that you can host yourself,
-    for whatever media collections you always want access to. Videos are uploaded to the service
-    and converted to HLS files and playlists, and 
+    for whatever media collections you always want access to. This repository provides
+    a containerized Spring Boot backend and a Vue frontend client. 
 
 Run backend using `docker-compose`:
 ```bash
 cd spillway
-mvn clean package
 docker-compose up --build
 ```
 
