@@ -38,7 +38,6 @@ import com.coraybennett.spillway.service.api.VideoConversionService;
  * Supports multiple video file formats and adaptive bitrate streaming.
  */
 @Service
-@Primary
 public class EnhancedFFmpegVideoConversionService implements VideoConversionService {
     private static final Logger logger = LoggerFactory.getLogger(EnhancedFFmpegVideoConversionService.class);
     
