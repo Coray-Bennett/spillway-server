@@ -8,7 +8,7 @@ public class QualityLevel {
     public final String maxRate;
     public final String bufSize;
     public final String audioBitrate;
-    public final int bandwidth;
+    public  final int bandwidth;
     
     QualityLevel(String name, int height, int width, String bitrate, String maxRate, String bufSize, 
                 String audioBitrate, int bandwidth) {
