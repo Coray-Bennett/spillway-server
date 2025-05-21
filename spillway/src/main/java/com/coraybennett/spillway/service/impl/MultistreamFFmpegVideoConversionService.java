@@ -207,6 +207,43 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
             return false;
         }
     }
+
+    /**
+     * Gets the duration of a video file in seconds
+     */
+    public int getVideoDuration(String videoPath) {
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("ffprobe");
+            command.add("-v");
+            command.add("error");
+            command.add("-show_entries");
+            command.add("format=duration");
+            command.add("-of");
+            command.add("default=noprint_wrappers=1:nokey=1");
+            command.add(videoPath);
+            
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            Process process = processBuilder.start();
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String durationStr = reader.readLine();
+            
+            int exitCode = process.waitFor();
+            if (exitCode != 0 || durationStr == null) {
+                logger.warn("Failed to get duration, process exited with code: {}", exitCode);
+                return 0;
+            }
+            
+            // Parse the duration (it's in seconds with decimal places)
+            double durationDouble = Double.parseDouble(durationStr);
+            return (int) Math.round(durationDouble);
+            
+        } catch (Exception e) {
+            logger.warn("Error determining video duration: {}", e.getMessage());
+            return 0;
+        }
+    }
     
     /**
      * Gets appropriate quality levels based on source resolution.
@@ -338,34 +375,47 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         command.add("ffmpeg");
         command.add("-i");
         command.add(sourceFile);
-        command.add("-preset");
-        command.add(encodingPreset);
         
-        // Add video encoding parameters
-        command.add("-c:v");
-        command.add("libx264");
+        // Detect hardware acceleration support
+        String hwAccel = detectHardwareAcceleration();
+        
+        if (hwAccel != null) {
+            applyHardwareAcceleration(command, hwAccel, quality);
+        } else {
+            // Use software encoding with optimizations
+            command.add("-preset");
+            command.add(encodingPreset);
+            command.add("-c:v");
+            command.add("libx264");
+            command.add("-b:v");
+            command.add(quality.bitrate);
+            command.add("-maxrate");
+            command.add(quality.maxRate);
+            command.add("-bufsize");
+            command.add(quality.bufSize);
+        }
+        
+        // Add audio encoding
         command.add("-c:a");
         command.add("aac");
         command.add("-b:a");
         command.add(quality.audioBitrate);
         
         // Add scaling parameters - use -2 to maintain aspect ratio
-        command.add("-vf");
-        command.add("scale=-2:" + quality.height);
+        if (hwAccel == null || !hwAccel.equals("vaapi")) { // VAAPI has scaling in its filter
+            command.add("-vf");
+            command.add("scale=-2:" + quality.height);
+        }
         
-        // Add video bitrate parameters
-        command.add("-b:v");
-        command.add(quality.bitrate);
-        command.add("-maxrate");
-        command.add(quality.maxRate);
-        command.add("-bufsize");
-        command.add(quality.bufSize);
-        
-        // Add HLS parameters
+        // Add HLS parameters for better performance
         command.add("-hls_time");
         command.add(String.valueOf(segmentDuration));
         command.add("-hls_playlist_type");
         command.add("vod");
+        command.add("-hls_segment_type");
+        command.add("mpegts");
+        command.add("-hls_flags");
+        command.add("independent_segments");
         command.add("-hls_segment_filename");
         command.add(Paths.get(outputDir, quality.name + "_%03d.ts").toString());
         command.add(Paths.get(outputDir, quality.name + ".m3u8").toString());
@@ -545,5 +595,92 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
                 logger.warn("Failed to delete output directory: {}", outputPath);
             }
         }
+    }
+
+    /**
+     * Detects available hardware acceleration methods
+     */
+    private String detectHardwareAcceleration() {
+        List<String> accelerators = Arrays.asList(
+            "nvenc",     // NVIDIA GPU acceleration
+            "qsv",       // Intel Quick Sync Video
+            "vaapi",     // Video Acceleration API (Linux)
+            "videotoolbox" // macOS video acceleration
+        );
+        
+        for (String accel : accelerators) {
+            try {
+                List<String> command = new ArrayList<>();
+                command.add("ffmpeg");
+                command.add("-hide_banner");
+                command.add("-encoders");
+                
+                ProcessBuilder processBuilder = new ProcessBuilder(command);
+                Process process = processBuilder.start();
+                
+                BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.contains(accel)) {
+                        logger.info("Hardware acceleration detected: {}", accel);
+                        return accel;
+                    }
+                }
+                
+                process.waitFor();
+            } catch (Exception e) {
+                logger.warn("Error while checking for hardware acceleration: {}", e.getMessage());
+            }
+        }
+        
+        logger.info("No hardware acceleration detected, using software encoding");
+        return null;
+    }
+
+    /**
+     * Modify FFmpeg command for hardware acceleration
+     */
+    private void applyHardwareAcceleration(List<String> command, String acceleration, QualityLevel quality) {
+        if (acceleration == null) return;
+        
+        switch (acceleration) {
+            case "nvenc":
+                command.add("-c:v");
+                command.add("h264_nvenc");
+                command.add("-preset");
+                command.add("p4");  // Lower values are higher quality but slower
+                break;
+                
+            case "qsv":
+                command.add("-c:v");
+                command.add("h264_qsv");
+                command.add("-preset");
+                command.add("faster");
+                break;
+                
+            case "vaapi":
+                command.add("-vaapi_device");
+                command.add("/dev/dri/renderD128");
+                command.add("-vf");
+                command.add("format=nv12|vaapi,hwupload");
+                command.add("-c:v");
+                command.add("h264_vaapi");
+                break;
+                
+            case "videotoolbox":
+                command.add("-c:v");
+                command.add("h264_videotoolbox");
+                command.add("-profile:v");
+                command.add("main");
+                break;
+        }
+        
+        // Add common parameters
+        command.add("-b:v");
+        command.add(quality.bitrate);
+        command.add("-maxrate");
+        command.add(quality.maxRate);
+        command.add("-bufsize");
+        command.add(quality.bufSize);
     }
 }

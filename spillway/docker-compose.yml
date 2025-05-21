@@ -18,7 +18,9 @@ services:
       retries: 20
   
   spillway:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.dev  # Use development-specific Dockerfile
     ports:
       - "8081:8081"
     depends_on:
@@ -28,8 +30,13 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/spillway?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
       SPRING_DATASOURCE_USERNAME: spillway
       SPRING_DATASOURCE_PASSWORD: spillway
+      SPRING_DEVTOOLS_REMOTE_SECRET: mysecret
     volumes:
+      - ./:/app  # Map the entire project directory
+      - maven-repo:/root/.m2  # Cache Maven dependencies
       - ./content:/app/content
+      - ./target:/app/target
 
 volumes:
   mysql_data:
+  maven-repo:

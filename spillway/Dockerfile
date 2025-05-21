@@ -8,10 +8,23 @@ RUN mvn clean package -DskipTests
 
 # Runtime stage
 FROM eclipse-temurin:24@sha256:4563384c85adc9de147a84f68607023b399b10ab5bac23e30e022635dfbcedda
-RUN apt-get update -qq && apt-get install -y ffmpeg
+
+# Install FFmpeg with hardware acceleration support
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository ppa:savoury1/ffmpeg5 \
+    && apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    vainfo \
+    i965-va-driver \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
-COPY conten[t] content
+COPY content content
 
 ENV SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/spillway?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
 ENV SPRING_DATASOURCE_USERNAME=spillway

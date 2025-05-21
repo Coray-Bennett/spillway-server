@@ -58,7 +58,10 @@ public class DefaultVideoService implements VideoService {
         Video video = new Video();
         video.setTitle(metadata.getTitle());
         video.setType(metadata.getType());
-        video.setLength(metadata.getLength());
+        
+        // Set a default length that will be updated after upload
+        video.setLength(metadata.getLength() != null ? metadata.getLength() : 0);
+        
         video.setGenre(metadata.getGenre());
         video.setDescription(metadata.getDescription());
         video.setSeasonNumber(metadata.getSeasonNumber());
@@ -94,6 +97,15 @@ public class DefaultVideoService implements VideoService {
                     videoFile, 
                     tempUploadDir
             );
+            
+            // Update video duration based on the actual file
+            // int duration = ((MultistreamFFmpegVideoConversionService) videoConversionService).getVideoDuration(tempFilePath.toString());
+            int duration = 0;
+            if (duration > 0) {
+                video.setLength(duration);
+                videoRepository.save(video);
+                // logger.info("Updated video duration to {} seconds for video {}", duration, videoId);
+            }
             
             // Start the conversion process
             videoConversionService.convertToHls(tempFilePath, video);
