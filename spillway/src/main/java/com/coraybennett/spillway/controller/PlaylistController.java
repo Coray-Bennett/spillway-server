@@ -15,6 +15,7 @@ import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.dto.PlaylistVideoDetails;
 import com.coraybennett.spillway.service.api.PlaylistService;
 import com.coraybennett.spillway.service.api.UserService;
+import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
@@ -26,15 +27,19 @@ public class PlaylistController {
     private final PlaylistService playlistService;
     private final VideoService videoService;
     private final UserService userService;
+    private final VideoAccessService videoAccessService;
 
     @Autowired
     public PlaylistController(
             PlaylistService playlistService, 
             VideoService videoService, 
-            UserService userService) {
+            UserService userService,
+            VideoAccessService videoAccessService
+        ) {
         this.playlistService = playlistService;
         this.videoService = videoService;
         this.userService = userService;
+        this.videoAccessService = videoAccessService;
     }
 
     @PostMapping
@@ -56,15 +61,45 @@ public class PlaylistController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Playlist> getPlaylist(@PathVariable String id) {
-        Optional<Playlist> playlist = playlistService.getPlaylistById(id);
-        return playlist.map(ResponseEntity::ok)
-                      .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Playlist> getPlaylist(@PathVariable String id, Principal principal) {
+        Optional<Playlist> playlistOpt = playlistService.getPlaylistById(id);
+        
+        if (playlistOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        Playlist playlist = playlistOpt.get();
+        
+        // Check access permission
+        User user = principal != null ? 
+            userService.findByUsername(principal.getName()).orElse(null) : null;
+        
+        if (!videoAccessService.canAccessPlaylist(playlist, user)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        return ResponseEntity.ok(playlist);
     }
 
     @GetMapping("/{id}/videos")
-    public ResponseEntity<List<Video>> getPlaylistVideos(@PathVariable String id) {
+    public ResponseEntity<List<Video>> getPlaylistVideos(@PathVariable String id, Principal principal) {
         try {
+            Optional<Playlist> playlistOpt = playlistService.getPlaylistById(id);
+            
+            if (playlistOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            Playlist playlist = playlistOpt.get();
+            
+            // Check access permission
+            User user = principal != null ? 
+                userService.findByUsername(principal.getName()).orElse(null) : null;
+            
+            if (!videoAccessService.canAccessPlaylist(playlist, user)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
             List<Video> videos = playlistService.getPlaylistVideos(id);
             return ResponseEntity.ok(videos);
         } catch (IllegalArgumentException e) {

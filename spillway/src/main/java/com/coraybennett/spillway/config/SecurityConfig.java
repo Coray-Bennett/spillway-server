@@ -42,8 +42,12 @@ public class SecurityConfig {
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
-                .requestMatchers("/search/**").permitAll() // Allow public search
-                .requestMatchers(HttpMethod.GET).permitAll()
+                .requestMatchers("/search/**").authenticated() // Require auth for search
+                .requestMatchers(HttpMethod.GET, "/video/*/playlist").authenticated() // Require auth for video access
+                .requestMatchers(HttpMethod.GET, "/video/*/playlist/*").authenticated()
+                .requestMatchers(HttpMethod.GET, "/video/*/segments/*").authenticated()
+                .requestMatchers(HttpMethod.GET, "/video/*").authenticated()
+                .requestMatchers(HttpMethod.GET, "/playlist/*").authenticated()
                 .requestMatchers(HttpMethod.POST).authenticated()
                 .requestMatchers(HttpMethod.PUT).authenticated()
                 .requestMatchers(HttpMethod.DELETE).authenticated()

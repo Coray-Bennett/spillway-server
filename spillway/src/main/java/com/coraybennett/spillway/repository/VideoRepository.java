@@ -20,6 +20,10 @@ public interface VideoRepository extends JpaRepository<Video, String>, JpaSpecif
     // Additional query methods for popular searches
     @Query("SELECT DISTINCT v.genre FROM Video v WHERE v.genre IS NOT NULL ORDER BY v.genre")
     List<String> findAllGenres();
+
+    @Query("SELECT DISTINCT v.genre FROM Video v WHERE v.genre IS NOT NULL AND v.uploadedBy.id = :userId ORDER BY v.genre")
+    List<String> findAllGenresByUploadedById(String userId);
+
     
     @Query("SELECT v FROM Video v WHERE v.conversionStatus = 'COMPLETED' ORDER BY v.createdAt DESC")
     List<Video> findRecentlyAddedVideos(org.springframework.data.domain.Pageable pageable);

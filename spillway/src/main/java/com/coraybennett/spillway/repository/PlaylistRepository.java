@@ -2,6 +2,7 @@ package com.coraybennett.spillway.repository;
 
 import java.util.List;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -19,5 +20,8 @@ public interface PlaylistRepository extends JpaRepository<Playlist, String>, Jpa
     Playlist findByIdWithVideos(String id);
     
     @Query("SELECT p FROM Playlist p ORDER BY SIZE(p.videos) DESC")
-    List<Playlist> findMostPopularPlaylists(org.springframework.data.domain.Pageable pageable);
+    List<Playlist> findMostPopularPlaylists(Pageable pageable);
+
+    @Query("SELECT p FROM Playlist p WHERE p.createdBy.id = :userId ORDER BY SIZE(p.videos) DESC")
+    List<Playlist> findMostPopularPlaylistsByCreatedById(String userId, Pageable pageable);
 }
