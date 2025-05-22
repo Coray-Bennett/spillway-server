@@ -42,6 +42,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers("/search/**").permitAll() // Allow public search
                 .requestMatchers(HttpMethod.GET).permitAll()
                 .requestMatchers(HttpMethod.POST).authenticated()
                 .requestMatchers(HttpMethod.PUT).authenticated()
@@ -50,9 +51,9 @@ public class SecurityConfig {
             )
             .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
-    
+
         http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
-    
+
         return http.build();
     }
 }
