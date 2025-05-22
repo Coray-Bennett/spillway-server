@@ -1,0 +1,65 @@
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: spillway
+      MYSQL_USER: spillway
+      MYSQL_PASSWORD: spillway
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data_dev_hw:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - spillway-dev-hw
+  
+  spillway:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev-hw
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev-hw
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/spillway?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: spillway
+      SPRING_DATASOURCE_PASSWORD: spillway
+      SPRING_DEVTOOLS_REMOTE_SECRET: mysecret
+      # Enable hardware acceleration
+      VIDEO_ENCODING_ENABLE_HW_ACCEL: true
+    volumes:
+      - ./:/app
+      - maven-repo-hw:/root/.m2
+      - ./content:/app/content
+      - ./temp:/app/temp
+      - /app/target
+    # Required for GPU access (NVIDIA)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # For Intel Quick Sync
+    devices:
+      - /dev/dri:/dev/dri
+    networks:
+      - spillway-dev-hw
+
+networks:
+  spillway-dev-hw:
+    driver: bridge
+
+volumes:
+  mysql_data_dev_hw:
+  maven-repo-hw:
