@@ -1,6 +1,6 @@
 FROM maven:3-eclipse-temurin-24-alpine@sha256:64f4ac33351e932d931bfe62cba7fcc320317a7d27c3154b6fb120111241efb2
 
-# Install FFmpeg with hardware acceleration support
+# Install FFmpeg with basic support (no hardware acceleration in dev mode)
 RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
@@ -16,5 +16,5 @@ RUN mvn dependency:go-offline
 EXPOSE 8081
 ENV MAVEN_CONFIG=/root/.m2
 
-# Start the application with DevTools remote support
+# Start the application in development mode
 CMD ["mvn", "spring-boot:run"]

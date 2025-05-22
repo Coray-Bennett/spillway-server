@@ -4,6 +4,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,8 @@ import com.coraybennett.spillway.service.api.VideoService;
  */
 @Service
 public class DefaultVideoService implements VideoService {
+    private static final Logger logger = LoggerFactory.getLogger(DefaultVideoService.class);
+
     private final VideoConversionService videoConversionService;
     private final VideoRepository videoRepository;
     private final PlaylistRepository playlistRepository;
@@ -99,12 +103,11 @@ public class DefaultVideoService implements VideoService {
             );
             
             // Update video duration based on the actual file
-            // int duration = ((MultistreamFFmpegVideoConversionService) videoConversionService).getVideoDuration(tempFilePath.toString());
-            int duration = 0;
+            int duration = videoConversionService.getVideoDuration(tempFilePath);
             if (duration > 0) {
                 video.setLength(duration);
                 videoRepository.save(video);
-                // logger.info("Updated video duration to {} seconds for video {}", duration, videoId);
+                logger.info("Updated video duration to {} seconds for video {}", duration, videoId);
             }
             
             // Start the conversion process

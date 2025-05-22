@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -275,6 +276,41 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         return SUPPORTED_VIDEO_EXTENSIONS.stream()
                 .anyMatch(ext -> filename.toLowerCase().endsWith(ext));
     }
+
+    @Override
+    public int getVideoDuration(Path videoPath) {
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("ffprobe");
+            command.add("-v");
+            command.add("error");
+            command.add("-show_entries");
+            command.add("format=duration");
+            command.add("-of");
+            command.add("default=noprint_wrappers=1:nokey=1");
+            command.add(videoPath.toString());
+            
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            Process process = processBuilder.start();
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String durationStr = reader.readLine();
+            
+            int exitCode = process.waitFor();
+            if (exitCode != 0 || durationStr == null) {
+                logger.warn("Failed to get duration, process exited with code: {}", exitCode);
+                return 0;
+            }
+            
+            // Parse the duration (it's in seconds with decimal places)
+            double durationDouble = Double.parseDouble(durationStr);
+            return (int) Math.round(durationDouble);
+            
+        } catch (Exception e) {
+            logger.warn("Error determining video duration: {}", e.getMessage());
+            return 0;
+        }
+    }
     
     /**
      * Gets the resolution of the source video.
@@ -366,9 +402,9 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
      * Updates progress within the specified range (baseProgress to maxProgress).
      */
     private void convertQuality(String sourceFile, String outputDir, String videoId, 
-                              QualityLevel quality, Video video,
-                              int baseProgress, int maxProgress) 
-            throws IOException, InterruptedException, VideoConversionException {
+                          QualityLevel quality, Video video,
+                          int baseProgress, int maxProgress) 
+        throws IOException, InterruptedException, VideoConversionException {
         
         // Build FFmpeg command for this quality
         List<String> command = new ArrayList<>();
@@ -379,21 +415,118 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         // Detect hardware acceleration support
         String hwAccel = detectHardwareAcceleration();
         
-        if (hwAccel != null) {
-            applyHardwareAcceleration(command, hwAccel, quality);
-        } else {
-            // Use software encoding with optimizations
-            command.add("-preset");
-            command.add(encodingPreset);
-            command.add("-c:v");
-            command.add("libx264");
-            command.add("-b:v");
-            command.add(quality.bitrate);
-            command.add("-maxrate");
-            command.add(quality.maxRate);
-            command.add("-bufsize");
-            command.add(quality.bufSize);
+        try {
+            if (hwAccel != null) {
+                applyHardwareAcceleration(command, hwAccel, quality);
+            } else {
+                // Use software encoding with optimizations
+                command.add("-preset");
+                command.add(encodingPreset);
+                command.add("-c:v");
+                command.add("libx264");
+                command.add("-b:v");
+                command.add(quality.bitrate);
+                command.add("-maxrate");
+                command.add(quality.maxRate);
+                command.add("-bufsize");
+                command.add(quality.bufSize);
+            }
+            
+            // Add audio encoding
+            command.add("-c:a");
+            command.add("aac");
+            command.add("-b:a");
+            command.add(quality.audioBitrate);
+            
+            // Add scaling parameters - use -2 to maintain aspect ratio
+            if (hwAccel == null || !hwAccel.equals("vaapi")) { // VAAPI has scaling in its filter
+                command.add("-vf");
+                command.add("scale=-2:" + quality.height);
+            }
+            
+            // Add HLS parameters
+            command.add("-hls_time");
+            command.add(String.valueOf(segmentDuration));
+            command.add("-hls_playlist_type");
+            command.add("vod");
+            command.add("-hls_segment_type");
+            command.add("mpegts");
+            command.add("-hls_flags");
+            command.add("independent_segments");
+            command.add("-hls_segment_filename");
+            command.add(Paths.get(outputDir, quality.name + "_%03d.ts").toString());
+            command.add(Paths.get(outputDir, quality.name + ".m3u8").toString());
+            
+            logger.info("FFmpeg command for {}: {}", quality.name, String.join(" ", command));
+            
+            // Execute FFmpeg command
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            processBuilder.redirectErrorStream(true);
+            Process process = processBuilder.start();
+            activeConversions.put(videoId, process);
+            
+            // Parse FFmpeg output to track progress
+            parseFFmpegOutputWithProgressRange(process, video, baseProgress, maxProgress);
+            
+            // Wait for process to complete
+            int exitCode = process.waitFor();
+            activeConversions.remove(videoId);
+            
+            // Check if the conversion succeeded
+            if (exitCode != 0) {
+                // If hardware acceleration failed, try again with software encoding
+                if (hwAccel != null) {
+                    logger.warn("Hardware acceleration failed with exit code {}. Retrying with software encoding.", exitCode);
+                    // Recursively call this method with hwAccel forced to null
+                    convertQualityWithSoftwareEncoding(sourceFile, outputDir, videoId, quality, video, baseProgress, maxProgress);
+                    return;
+                }
+                
+                throw new VideoConversionException("FFmpeg conversion for " + quality.name + " failed with exit code: " + exitCode);
+            }
+            
+            // Verify the output file exists
+            Path playlistPath = Paths.get(outputDir, quality.name + ".m3u8");
+            if (!Files.exists(playlistPath)) {
+                throw new VideoConversionException("Conversion failed: " + quality.name + " playlist file not found");
+            }
+            
+            // Process the playlist to update segment URLs
+            processPlaylistFile(playlistPath.toString(), videoId, quality.name + "_");
+            
+            logger.info("{} HLS playlist created successfully at {}", quality.name, playlistPath);
+        } catch (Exception e) {
+            if (e instanceof VideoConversionException) {
+                throw e;
+            }
+            throw new VideoConversionException("Error converting " + quality.name + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Fallback method to convert with software encoding when hardware acceleration fails
+     */
+    private void convertQualityWithSoftwareEncoding(String sourceFile, String outputDir, String videoId, 
+                                                QualityLevel quality, Video video,
+                                                int baseProgress, int maxProgress) 
+            throws IOException, InterruptedException, VideoConversionException {
+        
+        List<String> command = new ArrayList<>();
+        command.add("ffmpeg");
+        command.add("-i");
+        command.add(sourceFile);
+        
+        // Software encoding with optimizations
+        command.add("-preset");
+        command.add(encodingPreset);
+        command.add("-c:v");
+        command.add("libx264");
+        command.add("-b:v");
+        command.add(quality.bitrate);
+        command.add("-maxrate");
+        command.add(quality.maxRate);
+        command.add("-bufsize");
+        command.add(quality.bufSize);
         
         // Add audio encoding
         command.add("-c:a");
@@ -401,13 +534,11 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         command.add("-b:a");
         command.add(quality.audioBitrate);
         
-        // Add scaling parameters - use -2 to maintain aspect ratio
-        if (hwAccel == null || !hwAccel.equals("vaapi")) { // VAAPI has scaling in its filter
-            command.add("-vf");
-            command.add("scale=-2:" + quality.height);
-        }
+        // Add scaling parameters
+        command.add("-vf");
+        command.add("scale=-2:" + quality.height);
         
-        // Add HLS parameters for better performance
+        // Add HLS parameters
         command.add("-hls_time");
         command.add(String.valueOf(segmentDuration));
         command.add("-hls_playlist_type");
@@ -420,7 +551,7 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         command.add(Paths.get(outputDir, quality.name + "_%03d.ts").toString());
         command.add(Paths.get(outputDir, quality.name + ".m3u8").toString());
         
-        logger.info("FFmpeg command for {}: {}", quality.name, String.join(" ", command));
+        logger.info("Fallback FFmpeg command for {}: {}", quality.name, String.join(" ", command));
         
         // Execute FFmpeg command
         ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -437,7 +568,7 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         
         // Check if the conversion succeeded
         if (exitCode != 0) {
-            throw new VideoConversionException("FFmpeg conversion for " + quality.name + " failed with exit code: " + exitCode);
+            throw new VideoConversionException("Software FFmpeg conversion for " + quality.name + " failed with exit code: " + exitCode);
         }
         
         // Verify the output file exists
@@ -449,7 +580,7 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         // Process the playlist to update segment URLs
         processPlaylistFile(playlistPath.toString(), videoId, quality.name + "_");
         
-        logger.info("{} HLS playlist created successfully at {}", quality.name, playlistPath);
+        logger.info("{} HLS playlist created successfully with software encoding at {}", quality.name, playlistPath);
     }
 
     /**
@@ -598,42 +729,116 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     }
 
     /**
-     * Detects available hardware acceleration methods
+     * Detects available hardware acceleration methods and tests if they actually work
      */
     private String detectHardwareAcceleration() {
-        List<String> accelerators = Arrays.asList(
-            "nvenc",     // NVIDIA GPU acceleration
-            "qsv",       // Intel Quick Sync Video
-            "vaapi",     // Video Acceleration API (Linux)
-            "videotoolbox" // macOS video acceleration
-        );
+        // First, check if there are any hardware encoders available
+        Map<String, String> accelEncoders = new HashMap<>();
+        accelEncoders.put("nvenc", "h264_nvenc");
+        accelEncoders.put("qsv", "h264_qsv");
+        accelEncoders.put("vaapi", "h264_vaapi");
+        accelEncoders.put("videotoolbox", "h264_videotoolbox");
         
-        for (String accel : accelerators) {
-            try {
-                List<String> command = new ArrayList<>();
-                command.add("ffmpeg");
-                command.add("-hide_banner");
-                command.add("-encoders");
-                
-                ProcessBuilder processBuilder = new ProcessBuilder(command);
-                Process process = processBuilder.start();
-                
-                BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.contains(accel)) {
-                        logger.info("Hardware acceleration detected: {}", accel);
-                        return accel;
+        List<String> availableEncoders = new ArrayList<>();
+        
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("ffmpeg");
+            command.add("-encoders");
+            command.add("-hide_banner");
+            
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            Process process = processBuilder.start();
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                for (String encoder : accelEncoders.values()) {
+                    if (line.contains(encoder)) {
+                        availableEncoders.add(encoder);
+                        logger.info("Found hardware encoder: {}", encoder);
                     }
                 }
+            }
+            
+            process.waitFor();
+        } catch (Exception e) {
+            logger.warn("Error checking for hardware encoders: {}", e.getMessage());
+            return null;
+        }
+        
+        // If no hardware encoders are available, return null
+        if (availableEncoders.isEmpty()) {
+            logger.info("No hardware acceleration detected, using software encoding");
+            return null;
+        }
+        
+        // Try to validate each encoder with a quick test
+        for (Map.Entry<String, String> entry : accelEncoders.entrySet()) {
+            String accelType = entry.getKey();
+            String encoder = entry.getValue();
+            
+            if (!availableEncoders.contains(encoder)) {
+                continue;
+            }
+            
+            try {
+                // Create a quick 1-second test
+                List<String> testCommand = new ArrayList<>();
+                testCommand.add("ffmpeg");
+                testCommand.add("-f");
+                testCommand.add("lavfi");
+                testCommand.add("-i");
+                testCommand.add("testsrc=duration=1:size=640x360:rate=30");
+                testCommand.add("-c:v");
+                testCommand.add(encoder);
                 
-                process.waitFor();
+                // Add specific flags for different acceleration types
+                switch (accelType) {
+                    case "vaapi":
+                        testCommand.add("-vaapi_device");
+                        testCommand.add("/dev/dri/renderD128");
+                        testCommand.add("-vf");
+                        testCommand.add("format=nv12|vaapi,hwupload");
+                        break;
+                        
+                    case "qsv":
+                        testCommand.add("-preset");
+                        testCommand.add("faster");
+                        break;
+                        
+                    case "nvenc":
+                        testCommand.add("-preset");
+                        testCommand.add("p4");
+                        break;
+                }
+                
+                testCommand.add("-f");
+                testCommand.add("null");
+                testCommand.add("-");
+                
+                ProcessBuilder testProcessBuilder = new ProcessBuilder(testCommand);
+                testProcessBuilder.redirectErrorStream(true);
+                Process testProcess = testProcessBuilder.start();
+                
+                BufferedReader testReader = new BufferedReader(new InputStreamReader(testProcess.getInputStream()));
+                while (testReader.readLine() != null) {
+                    // Just read the output to avoid blocking
+                }
+                
+                int testExitCode = testProcess.waitFor();
+                if (testExitCode == 0) {
+                    logger.info("Hardware acceleration validated: {} using {}", accelType, encoder);
+                    return accelType;
+                } else {
+                    logger.warn("Hardware acceleration test failed for {} with exit code {}", accelType, testExitCode);
+                }
             } catch (Exception e) {
-                logger.warn("Error while checking for hardware acceleration: {}", e.getMessage());
+                logger.warn("Error testing hardware acceleration {}: {}", accelType, e.getMessage());
             }
         }
         
-        logger.info("No hardware acceleration detected, using software encoding");
+        logger.info("No working hardware acceleration found, falling back to software encoding");
         return null;
     }
 
