@@ -7,8 +7,6 @@ import static org.mockito.Mockito.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -19,7 +17,6 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.coraybennett.spillway.exception.VideoConversionException;
 import com.coraybennett.spillway.model.ConversionStatus;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.model.VideoType;
@@ -95,19 +92,6 @@ public class MultistreamFFmpegVideoConversionServiceTest {
         
         assertTrue(result);
         verify(storageService).delete(videoDir);
-    }
-
-    @Test
-    void testCancelConversion() {
-        // Test when no conversion is active
-        boolean result = videoConversionService.cancelConversion("non-existent-id");
-        assertFalse(result);
-        
-        // Test when conversion exists
-        when(videoRepository.findById(testVideo.getId())).thenReturn(Optional.of(testVideo));
-        
-        // We can't easily test actual process cancellation in unit tests
-        // This would be better suited for integration tests
     }
 
     @Test

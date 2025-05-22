@@ -68,6 +68,9 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     @Value("${video.encoding.segment-duration:4}")
     private int segmentDuration;
 
+    @Value("${video.encoding.enable-hw-accel:false}")
+    private boolean hardwareAccelerationEnabled;
+
     private static final QualityLevel[] ALL_QUALITY_LEVELS = QualityLevel.ALL_QUALITY_LEVELS;
 
     @Autowired
@@ -732,6 +735,11 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
      * Detects available hardware acceleration methods and tests if they actually work
      */
     private String detectHardwareAcceleration() {
+
+        if(!hardwareAccelerationEnabled) {
+            return null;
+        }
+
         // First, check if there are any hardware encoders available
         Map<String, String> accelEncoders = new HashMap<>();
         accelEncoders.put("nvenc", "h264_nvenc");

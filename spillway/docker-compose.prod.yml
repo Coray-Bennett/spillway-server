@@ -1,40 +1,41 @@
-# docker-compose.prod.yml
 version: '3.8'
 services:
   mysql:
     image: mysql:8.0
-    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: spillway
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
-      interval: 10s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
       timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - spillway-network
+      retries: 20
   
   spillway:
-    image: spillway:latest
-    env_file: .env
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - MYSQL_HOST=mysql
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8081:8081"
     depends_on:
       mysql:
-        condition: service_healthy
+        condition: service_healthy  # Wait for MySQL to report healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/spillway?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
-      - spillway_content:/app/content
-    restart: unless-stopped
-    networks:
-      - spillway-network
-
-networks:
-  spillway-network:
+      - ./:/app  # Map the entire project directory
+      - maven-repo:/root/.m2  # Cache Maven dependencies
+      - ./content:/app/content
+      - ./target:/app/target
 
 volumes:
   mysql_data:
-  spillway_content:
+  maven-repo:
