@@ -1,5 +1,11 @@
 name: Backend CI
 
+env:
+  MYSQL_USER: spillway
+  MYSQL_PASSWORD: spillway
+  MYSQL_ROOT_PASSWORD: root
+  SERVER_URL: http://localhost:8081
+
 on:
   push:
     branches: [ "main", "develop" ]
