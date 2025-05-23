@@ -6,12 +6,12 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Meta-annotation for securing video resources.
+ * Meta-annotation for securing playlist resources.
  * This is processed by a dedicated aspect that will apply the necessary security checks.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface SecuredVideoResource {
+public @interface SecuredPlaylistResource {
     /**
      * Whether the operation requires write permission (ownership)
      */
@@ -28,6 +28,11 @@ public @interface SecuredVideoResource {
      * Specify how to handle the resolved resource
      */
     ResourceHandling handling() default ResourceHandling.INJECT_RESOLVED;
+    
+    /**
+     * The parameter name that contains the playlist ID
+     */
+    String idParameter() default "id";
     
     /**
      * How to handle the resolved resource

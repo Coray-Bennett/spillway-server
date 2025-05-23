@@ -9,9 +9,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.coraybennett.spillway.annotation.CurrentUser;
-import com.coraybennett.spillway.annotation.RequiresAuthentication;
-import com.coraybennett.spillway.annotation.ResourceAccess;
 import com.coraybennett.spillway.annotation.ResolvedResource;
+import com.coraybennett.spillway.annotation.SecuredPlaylistResource;
+import com.coraybennett.spillway.annotation.UserAction;
 import com.coraybennett.spillway.dto.PlaylistVideoDetails;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
@@ -22,7 +22,7 @@ import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
- * Refactored controller handling playlist operations using annotations for access control.
+ * Fully refactored controller handling playlist operations using meta-annotations for access control.
  */
 @RestController
 @RequestMapping("/playlist")
@@ -46,7 +46,7 @@ public class PlaylistController {
     }
 
     @PostMapping
-    @RequiresAuthentication
+    @UserAction
     public ResponseEntity<Playlist> createPlaylist(@RequestBody Playlist playlist, @CurrentUser User user) {
         try {
             Playlist createdPlaylist = playlistService.createPlaylist(
@@ -62,10 +62,7 @@ public class PlaylistController {
     }
 
     @GetMapping("/{id}")
-    @ResourceAccess(
-        resourceType = ResourceAccess.ResourceType.PLAYLIST,
-        handling = ResourceAccess.ResourceHandling.INJECT_RESOLVED
-    )
+    @SecuredPlaylistResource(optionalAuth = true)
     public ResponseEntity<Playlist> getPlaylist(
             @PathVariable String id, 
             @CurrentUser(required = false) User user,
@@ -75,10 +72,7 @@ public class PlaylistController {
     }
 
     @GetMapping("/{id}/videos")
-    @ResourceAccess(
-        resourceType = ResourceAccess.ResourceType.PLAYLIST,
-        handling = ResourceAccess.ResourceHandling.INJECT_RESOLVED
-    )
+    @SecuredPlaylistResource(optionalAuth = true)
     public ResponseEntity<List<Video>> getPlaylistVideos(
             @PathVariable String id, 
             @CurrentUser(required = false) User user,
@@ -93,19 +87,14 @@ public class PlaylistController {
     }
 
     @GetMapping("/my-playlists")
-    @RequiresAuthentication
+    @UserAction
     public ResponseEntity<List<Playlist>> getMyPlaylists(@CurrentUser User user) {
         List<Playlist> playlists = playlistService.listPlaylists(user.getId());
         return ResponseEntity.ok(playlists);
     }
 
     @PutMapping("/{id}")
-    @RequiresAuthentication
-    @ResourceAccess(
-        resourceType = ResourceAccess.ResourceType.PLAYLIST,
-        requireWriteAccess = true,
-        handling = ResourceAccess.ResourceHandling.INJECT_RESOLVED
-    )
+    @SecuredPlaylistResource(requireWrite = true)
     public ResponseEntity<Playlist> updatePlaylist(
             @PathVariable String id, 
             @RequestBody Playlist playlistDetails, 
@@ -131,13 +120,7 @@ public class PlaylistController {
     }
 
     @PostMapping("/{playlistId}/videos/{videoId}")
-    @RequiresAuthentication
-    @ResourceAccess(
-        resourceType = ResourceAccess.ResourceType.PLAYLIST,
-        idParameter = "playlistId",
-        requireWriteAccess = true,
-        handling = ResourceAccess.ResourceHandling.INJECT_RESOLVED
-    )
+    @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
     public ResponseEntity<?> addVideoToPlaylist(
             @PathVariable String playlistId, 
             @PathVariable String videoId,
@@ -173,12 +156,7 @@ public class PlaylistController {
     }
 
     @DeleteMapping("/{playlistId}/videos/{videoId}")
-    @RequiresAuthentication
-    @ResourceAccess(
-        resourceType = ResourceAccess.ResourceType.PLAYLIST,
-        idParameter = "playlistId",
-        requireWriteAccess = true
-    )
+    @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
     public ResponseEntity<?> removeVideoFromPlaylist(
             @PathVariable String playlistId, 
             @PathVariable String videoId,

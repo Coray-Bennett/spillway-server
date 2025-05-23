@@ -23,9 +23,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.coraybennett.spillway.annotation.CurrentUser;
-import com.coraybennett.spillway.annotation.RequiresAuthentication;
 import com.coraybennett.spillway.annotation.ResolvedResource;
-import com.coraybennett.spillway.annotation.ResourceAccess;
+import com.coraybennett.spillway.annotation.SecuredVideoResource;
+import com.coraybennett.spillway.annotation.UserAction;
 import com.coraybennett.spillway.dto.VideoListResponse;
 import com.coraybennett.spillway.model.ConversionStatus;
 import com.coraybennett.spillway.model.User;
@@ -37,7 +37,7 @@ import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
- * Refactored controller handling video-related operations using annotations for access control.
+ * Fully refactored controller handling video-related operations using meta-annotations for access control.
  */
 @RestController
 @RequestMapping("/video")
@@ -64,10 +64,7 @@ public class VideoController {
     }
 
     @GetMapping("/{id}")
-    @ResourceAccess(
-        resourceType = ResourceAccess.ResourceType.VIDEO,
-        handling = ResourceAccess.ResourceHandling.INJECT_RESOLVED
-    )
+    @SecuredVideoResource(optionalAuth = true)
     public ResponseEntity<?> getVideoMetadata(
             @PathVariable String id, 
             @CurrentUser(required = false) User user,
@@ -86,10 +83,7 @@ public class VideoController {
     }
     
     @GetMapping("/{id}/playlist")
-    @ResourceAccess(
-        resourceType = ResourceAccess.ResourceType.VIDEO,
-        handling = ResourceAccess.ResourceHandling.INJECT_RESOLVED
-    )
+    @SecuredVideoResource(optionalAuth = true)
     public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(
             @PathVariable String id,
             @CurrentUser(required = false) User user,
@@ -129,16 +123,13 @@ public class VideoController {
     }
 
     @GetMapping("/{id}/playlist/{quality}")
-    @ResourceAccess(resourceType = ResourceAccess.ResourceType.VIDEO)
+    @SecuredVideoResource(optionalAuth = true, handling = SecuredVideoResource.ResourceHandling.VERIFY_ONLY)
     public ResponseEntity<ByteArrayResource> getVideoQualityPlaylist(
             @PathVariable String id, 
             @PathVariable String quality,
             @CurrentUser(required = false) User user) throws IOException {
         
         Optional<Video> video = videoService.getVideoById(id);
-        if (video.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
         
         if (video.get().getConversionStatus() != ConversionStatus.COMPLETED) {
             return ResponseEntity.status(HttpStatus.ACCEPTED).build();
@@ -173,7 +164,7 @@ public class VideoController {
     }
 
     @GetMapping("/{id}/segments/{filename}")
-    @ResourceAccess(resourceType = ResourceAccess.ResourceType.VIDEO)
+    @SecuredVideoResource(optionalAuth = true, handling = SecuredVideoResource.ResourceHandling.VERIFY_ONLY)
     public ResponseEntity<ByteArrayResource> getVideoSegment(
             @PathVariable String id, 
             @PathVariable String filename,
@@ -202,7 +193,7 @@ public class VideoController {
     }
 
     @GetMapping("/my-videos")
-    @RequiresAuthentication
+    @UserAction
     public ResponseEntity<List<VideoListResponse>> getMyVideos(@CurrentUser User user) {
         List<Video> myVideos = videoService.listVideos(user.getId());
         List<VideoListResponse> videoResponses = myVideos.stream()
@@ -213,12 +204,7 @@ public class VideoController {
     }
 
     @PutMapping("/{id}")
-    @RequiresAuthentication
-    @ResourceAccess(
-        resourceType = ResourceAccess.ResourceType.VIDEO,
-        requireWriteAccess = true,
-        handling = ResourceAccess.ResourceHandling.INJECT_RESOLVED
-    )
+    @SecuredVideoResource(requireWrite = true)
     public ResponseEntity<?> updateVideo(
             @PathVariable String id, 
             @RequestBody Video videoDetails, 
