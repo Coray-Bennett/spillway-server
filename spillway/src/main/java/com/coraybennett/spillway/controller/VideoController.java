@@ -7,6 +7,7 @@ import java.nio.file.Paths;
 import java.security.Principal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -90,6 +91,13 @@ public class VideoController {
     
     @GetMapping("/{id}/playlist")
     public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(@PathVariable String id, Principal principal) throws IOException {
+        
+        try {
+            id = UUID.fromString(id).toString();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+        
 
         Optional<Video> videoOpt = videoService.getVideoById(id);
         if (videoOpt.isEmpty()) {
@@ -97,7 +105,7 @@ public class VideoController {
         }
         
         Video video = videoOpt.get();
-        
+
         // Check access permission
         User user = principal != null ? 
             userService.findByUsername(principal.getName()).orElse(null) : null;
