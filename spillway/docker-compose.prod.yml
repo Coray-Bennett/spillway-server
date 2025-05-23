@@ -1,0 +1,40 @@
+# docker-compose.prod.yml
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    env_file: .env
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - spillway-network
+  
+  spillway:
+    image: spillway:latest
+    env_file: .env
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MYSQL_HOST=mysql
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - spillway_content:/app/content
+    restart: unless-stopped
+    networks:
+      - spillway-network
+
+networks:
+  spillway-network:
+
+volumes:
+  mysql_data:
+  spillway_content:

@@ -4,6 +4,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,8 @@ import com.coraybennett.spillway.service.api.VideoService;
  */
 @Service
 public class DefaultVideoService implements VideoService {
+    private static final Logger logger = LoggerFactory.getLogger(DefaultVideoService.class);
+
     private final VideoConversionService videoConversionService;
     private final VideoRepository videoRepository;
     private final PlaylistRepository playlistRepository;
@@ -58,7 +62,10 @@ public class DefaultVideoService implements VideoService {
         Video video = new Video();
         video.setTitle(metadata.getTitle());
         video.setType(metadata.getType());
-        video.setLength(metadata.getLength());
+        
+        // Set a default length that will be updated after upload
+        video.setLength(metadata.getLength() != null ? metadata.getLength() : 0);
+        
         video.setGenre(metadata.getGenre());
         video.setDescription(metadata.getDescription());
         video.setSeasonNumber(metadata.getSeasonNumber());
@@ -94,6 +101,14 @@ public class DefaultVideoService implements VideoService {
                     videoFile, 
                     tempUploadDir
             );
+            
+            // Update video duration based on the actual file
+            int duration = videoConversionService.getVideoDuration(tempFilePath);
+            if (duration > 0) {
+                video.setLength(duration);
+                videoRepository.save(video);
+                logger.info("Updated video duration to {} seconds for video {}", duration, videoId);
+            }
             
             // Start the conversion process
             videoConversionService.convertToHls(tempFilePath, video);

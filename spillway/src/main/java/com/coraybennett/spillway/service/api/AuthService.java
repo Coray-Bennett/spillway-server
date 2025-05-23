@@ -2,6 +2,7 @@ package com.coraybennett.spillway.service.api;
 
 import com.coraybennett.spillway.dto.AuthRequest;
 import com.coraybennett.spillway.dto.AuthResponse;
+import com.coraybennett.spillway.dto.RegistrationResponse;
 import com.coraybennett.spillway.model.User;
 
 /**
@@ -24,10 +25,27 @@ public interface AuthService {
      * @param username Username
      * @param password Password
      * @param email Email address
-     * @return The created user
+     * @return Registration response with confirmation requirements
+     * @throws IllegalArgumentException if validation fails
      * @throws Exception if registration fails
      */
-    User register(String username, String password, String email) throws Exception;
+    RegistrationResponse register(String username, String password, String email) throws Exception;
+    
+    /**
+     * Confirms a user's email address.
+     * 
+     * @param token The confirmation token
+     * @return true if confirmation was successful
+     */
+    boolean confirmEmail(String token);
+    
+    /**
+     * Resends confirmation email.
+     * 
+     * @param email The user's email address
+     * @return true if email was sent successfully
+     */
+    boolean resendConfirmationEmail(String email);
     
     /**
      * Validates a token.

@@ -152,6 +152,41 @@ public class FFmpegVideoConversionService implements VideoConversionService {
             return false;
         }
     }
+
+    @Override
+    public int getVideoDuration(Path videoPath) {
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("ffprobe");
+            command.add("-v");
+            command.add("error");
+            command.add("-show_entries");
+            command.add("format=duration");
+            command.add("-of");
+            command.add("default=noprint_wrappers=1:nokey=1");
+            command.add(videoPath.toString());
+            
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            Process process = processBuilder.start();
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String durationStr = reader.readLine();
+            
+            int exitCode = process.waitFor();
+            if (exitCode != 0 || durationStr == null) {
+                logger.warn("Failed to get duration, process exited with code: {}", exitCode);
+                return 0;
+            }
+            
+            // Parse the duration (it's in seconds with decimal places)
+            double durationDouble = Double.parseDouble(durationStr);
+            return (int) Math.round(durationDouble);
+            
+        } catch (Exception e) {
+            logger.warn("Error determining video duration: {}", e.getMessage());
+            return 0;
+        }
+    }
     
     /**
      * Builds the FFmpeg command for HLS conversion.

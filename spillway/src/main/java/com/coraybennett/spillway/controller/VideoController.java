@@ -1,6 +1,5 @@
 package com.coraybennett.spillway.controller;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,6 +7,7 @@ import java.nio.file.Paths;
 import java.security.Principal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +29,7 @@ import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
 import com.coraybennett.spillway.service.api.UserService;
+import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
@@ -41,27 +42,44 @@ public class VideoController {
     private final UserService userService;
     private final VideoRepository videoRepository;
     private final StorageService storageService;
+    private final VideoAccessService videoAccessService;
 
     @Autowired
     public VideoController(
         VideoService videoService, 
         UserService userService,
         VideoRepository videoRepository,
-        StorageService storageService
+        StorageService storageService,
+        VideoAccessService videoAccessService
     ) {
         this.videoService = videoService;
         this.userService = userService;
         this.videoRepository = videoRepository;
         this.storageService = storageService;
+        this.videoAccessService = videoAccessService;
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getVideoMetadata(@PathVariable String id) {
-        Optional<Video> video = videoService.getVideoById(id);
-        return video.map(ResponseEntity::ok)
-                    .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<?> getVideoMetadata(@PathVariable String id, Principal principal) {
+        Optional<Video> videoOpt = videoService.getVideoById(id);
+        
+        if (videoOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        Video video = videoOpt.get();
+        
+        // Check access permission
+        User user = principal != null ? 
+            userService.findByUsername(principal.getName()).orElse(null) : null;
+        
+        if (!videoAccessService.canAccessVideo(video, user)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        return ResponseEntity.ok(video);
     }
-    
+
     @GetMapping("/{id}/status")
     public ResponseEntity<?> getConversionStatus(@PathVariable String id) {
         VideoService.ConversionProgress progress = videoService.getConversionProgress(id);
@@ -72,13 +90,31 @@ public class VideoController {
     }
     
     @GetMapping("/{id}/playlist")
-    public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(@PathVariable String id) throws IOException {
-        Optional<Video> video = videoService.getVideoById(id);
-        if (video.isEmpty()) {
+    public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(@PathVariable String id, Principal principal) throws IOException {
+        
+        try {
+            id = UUID.fromString(id).toString();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+
+        Optional<Video> videoOpt = videoService.getVideoById(id);
+        if (videoOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         
-        if (video.get().getConversionStatus() != com.coraybennett.spillway.model.ConversionStatus.COMPLETED) {
+        Video video = videoOpt.get();
+
+        // Check access permission
+        User user = principal != null ? 
+            userService.findByUsername(principal.getName()).orElse(null) : null;
+        
+        if (!videoAccessService.canAccessVideo(video, user)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        if (video.getConversionStatus() != com.coraybennett.spillway.model.ConversionStatus.COMPLETED) {
             return ResponseEntity.status(HttpStatus.ACCEPTED).build();
         }
 

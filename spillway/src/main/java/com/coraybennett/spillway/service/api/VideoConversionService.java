@@ -41,4 +41,12 @@ public interface VideoConversionService {
      * @return true if cleanup was successful, false otherwise
      */
     boolean cleanupVideoFiles(String videoId);
+    
+    /**
+     * Gets the duration of a video file in seconds.
+     * 
+     * @param videoPath Path to the video file
+     * @return Duration in seconds, or 0 if detection failed
+     */
+    int getVideoDuration(Path videoPath);
 }

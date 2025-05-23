@@ -10,5 +10,8 @@ import com.coraybennett.spillway.model.User;
 @Repository
 public interface UserRepository extends JpaRepository<User, String> {
     Optional<User> findByUsername(String username);
+    Optional<User> findByEmail(String email);
+    Optional<User> findByConfirmationToken(String confirmationToken);
     boolean existsByUsername(String username);
+    boolean existsByEmail(String email);
 }
