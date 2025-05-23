@@ -8,8 +8,6 @@ import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.service.api.VideoAccessService;
 
-import jakarta.persistence.criteria.Predicate;
-
 /**
  * Default implementation of VideoAccessService.
  * Currently only allows access to content uploaded by the user.

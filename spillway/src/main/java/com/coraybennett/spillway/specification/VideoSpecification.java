@@ -7,7 +7,6 @@ import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.dto.VideoSearchRequest;
 
 import jakarta.persistence.criteria.*;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
