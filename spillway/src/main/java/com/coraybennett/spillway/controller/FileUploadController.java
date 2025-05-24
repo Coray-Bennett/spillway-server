@@ -21,7 +21,6 @@ import com.coraybennett.spillway.dto.VideoUploadRequest;
 import com.coraybennett.spillway.exception.VideoConversionException;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
-import com.coraybennett.spillway.service.api.UserService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
@@ -31,12 +30,10 @@ import com.coraybennett.spillway.service.api.VideoService;
 @RequestMapping("/upload")
 public class FileUploadController {
     private final VideoService videoService;
-    private final UserService userService;
 
     @Autowired
-    public FileUploadController(VideoService videoService, UserService userService) {
+    public FileUploadController(VideoService videoService) {
         this.videoService = videoService;
-        this.userService = userService;
     }
 
     @PostMapping("/video/metadata")
@@ -56,7 +53,7 @@ public class FileUploadController {
     @PostMapping(value = "/video/{videoId}/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @SecuredVideoResource(requireWrite = true, idParameter = "videoId")
     public ResponseEntity<?> uploadVideoFile(
-            @PathVariable String videoId,
+            @PathVariable("videoId") String videoId,
             @RequestParam("file") MultipartFile videoFile,
             @CurrentUser User user,
             @ResolvedResource Video video

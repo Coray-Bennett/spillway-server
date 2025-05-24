@@ -1,7 +1,6 @@
 package com.coraybennett.spillway.aspect;
 
 import com.coraybennett.spillway.annotation.CurrentUser;
-import com.coraybennett.spillway.annotation.RequiresAuthentication;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.service.api.UserService;
 

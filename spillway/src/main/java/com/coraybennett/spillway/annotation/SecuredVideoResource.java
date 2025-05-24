@@ -36,4 +36,6 @@ public @interface SecuredVideoResource {
         VERIFY_ONLY,       // Just verify access, don't inject
         INJECT_RESOLVED    // Inject the resolved resource into a parameter
     }
+
+    String idParameter() default "id";
 }

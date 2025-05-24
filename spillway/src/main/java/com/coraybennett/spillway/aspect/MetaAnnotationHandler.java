@@ -1,6 +1,5 @@
 package com.coraybennett.spillway.aspect;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.security.Principal;
@@ -9,16 +8,15 @@ import java.util.Optional;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.annotation.Order;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 
 import com.coraybennett.spillway.annotation.CurrentUser;
 import com.coraybennett.spillway.annotation.ResolvedResource;
@@ -136,7 +134,6 @@ public class MetaAnnotationHandler {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         
-        // Find the video ID parameter - it should be the one annotated with @PathVariable("id")
         String videoId = null;
         Object[] args = joinPoint.getArgs();
         
@@ -144,7 +141,7 @@ public class MetaAnnotationHandler {
             Parameter param = parameters[i];
             PathVariable pathVar = param.getAnnotation(PathVariable.class);
             
-            if (pathVar != null && ("id".equals(pathVar.value()) || "id".equals(pathVar.name()))) {
+            if (pathVar != null && (securedVideo.idParameter().equals(pathVar.value()) || securedVideo.idParameter().equals(pathVar.name()))) {
                 if (args[i] != null) {
                     videoId = args[i].toString();
                     break;
@@ -293,23 +290,5 @@ public class MetaAnnotationHandler {
         }
         
         return joinPoint.proceed(args);
-    }
-    
-    /**
-     * Helper method to check if a parameter has a specific annotation with a specific name.
-     */
-    private boolean paramHasAnnotation(Parameter param, String target, Class<? extends Annotation> annotationType) {
-        for (Annotation annotation : param.getAnnotations()) {
-            if (annotation.annotationType() == annotationType) {
-                try {
-                    Method valueMethod = annotationType.getDeclaredMethod("value");
-                    String value = (String) valueMethod.invoke(annotation);
-                    return value.equals(target);
-                } catch (Exception e) {
-                    return false;
-                }
-            }
-        }
-        return false;
     }
 }

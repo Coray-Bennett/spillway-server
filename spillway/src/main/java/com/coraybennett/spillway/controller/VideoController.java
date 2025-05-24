@@ -32,8 +32,6 @@ import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
-import com.coraybennett.spillway.service.api.UserService;
-import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
@@ -43,30 +41,23 @@ import com.coraybennett.spillway.service.api.VideoService;
 @RequestMapping("/video")
 public class VideoController {
     private final VideoService videoService;
-    private final UserService userService;
     private final VideoRepository videoRepository;
     private final StorageService storageService;
-    private final VideoAccessService videoAccessService;
-
     @Autowired
     public VideoController(
         VideoService videoService, 
-        UserService userService,
         VideoRepository videoRepository,
-        StorageService storageService,
-        VideoAccessService videoAccessService
+        StorageService storageService
     ) {
         this.videoService = videoService;
-        this.userService = userService;
         this.videoRepository = videoRepository;
         this.storageService = storageService;
-        this.videoAccessService = videoAccessService;
     }
 
     @GetMapping("/{id}")
     @SecuredVideoResource(optionalAuth = true)
     public ResponseEntity<?> getVideoMetadata(
-            @PathVariable String id, 
+            @PathVariable("id") String id, 
             @CurrentUser(required = false) User user,
             @ResolvedResource Video video) {
         
@@ -74,7 +65,7 @@ public class VideoController {
     }
 
     @GetMapping("/{id}/status")
-    public ResponseEntity<?> getConversionStatus(@PathVariable String id) {
+    public ResponseEntity<?> getConversionStatus(@PathVariable("id") String id) {
         VideoService.ConversionProgress progress = videoService.getConversionProgress(id);
         if (progress == null) {
             return ResponseEntity.notFound().build();
@@ -85,7 +76,7 @@ public class VideoController {
     @GetMapping("/{id}/playlist")
     @SecuredVideoResource(optionalAuth = true)
     public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(
-            @PathVariable String id,
+            @PathVariable("id") String id,
             @CurrentUser(required = false) User user,
             @ResolvedResource Video video) throws IOException {
         
@@ -125,8 +116,8 @@ public class VideoController {
     @GetMapping("/{id}/playlist/{quality}")
     @SecuredVideoResource(optionalAuth = true, handling = SecuredVideoResource.ResourceHandling.VERIFY_ONLY)
     public ResponseEntity<ByteArrayResource> getVideoQualityPlaylist(
-            @PathVariable String id, 
-            @PathVariable String quality,
+            @PathVariable("id") String id, 
+            @PathVariable("quality") String quality,
             @CurrentUser(required = false) User user) throws IOException {
         
         Optional<Video> video = videoService.getVideoById(id);
@@ -166,8 +157,8 @@ public class VideoController {
     @GetMapping("/{id}/segments/{filename}")
     @SecuredVideoResource(optionalAuth = true, handling = SecuredVideoResource.ResourceHandling.VERIFY_ONLY)
     public ResponseEntity<ByteArrayResource> getVideoSegment(
-            @PathVariable String id, 
-            @PathVariable String filename,
+            @PathVariable("id") String id, 
+            @PathVariable("filename") String filename,
             @CurrentUser(required = false) User user) throws IOException {
             
         Path segmentPath = Paths.get(videoService.getVideoConversionService().getOutputDirectory().toString(),
@@ -206,7 +197,7 @@ public class VideoController {
     @PutMapping("/{id}")
     @SecuredVideoResource(requireWrite = true)
     public ResponseEntity<?> updateVideo(
-            @PathVariable String id, 
+            @PathVariable("id") String id, 
             @RequestBody Video videoDetails, 
             @CurrentUser User user,
             @ResolvedResource Video video) {

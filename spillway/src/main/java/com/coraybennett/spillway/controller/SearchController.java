@@ -15,8 +15,6 @@ import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.service.api.SearchService;
-import com.coraybennett.spillway.service.api.UserService;
-
 /**
  * Refactored controller handling search and filter operations.
  * All searches are restricted to content the authenticated user has access to.
@@ -25,12 +23,10 @@ import com.coraybennett.spillway.service.api.UserService;
 @RequestMapping("/search")
 public class SearchController {
     private final SearchService searchService;
-    private final UserService userService;
 
     @Autowired
-    public SearchController(SearchService searchService, UserService userService) {
+    public SearchController(SearchService searchService) {
         this.searchService = searchService;
-        this.userService = userService;
     }
 
     @PostMapping("/videos")

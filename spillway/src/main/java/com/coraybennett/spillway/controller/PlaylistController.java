@@ -17,8 +17,6 @@ import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.service.api.PlaylistService;
-import com.coraybennett.spillway.service.api.UserService;
-import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
@@ -29,20 +27,14 @@ import com.coraybennett.spillway.service.api.VideoService;
 public class PlaylistController {
     private final PlaylistService playlistService;
     private final VideoService videoService;
-    private final UserService userService;
-    private final VideoAccessService videoAccessService;
 
     @Autowired
     public PlaylistController(
             PlaylistService playlistService, 
-            VideoService videoService, 
-            UserService userService,
-            VideoAccessService videoAccessService
+            VideoService videoService
         ) {
         this.playlistService = playlistService;
         this.videoService = videoService;
-        this.userService = userService;
-        this.videoAccessService = videoAccessService;
     }
 
     @PostMapping
@@ -64,7 +56,7 @@ public class PlaylistController {
     @GetMapping("/{id}")
     @SecuredPlaylistResource(optionalAuth = true)
     public ResponseEntity<Playlist> getPlaylist(
-            @PathVariable String id, 
+            @PathVariable("id") String id, 
             @CurrentUser(required = false) User user,
             @ResolvedResource Playlist playlist) {
         
@@ -74,7 +66,7 @@ public class PlaylistController {
     @GetMapping("/{id}/videos")
     @SecuredPlaylistResource(optionalAuth = true)
     public ResponseEntity<List<Video>> getPlaylistVideos(
-            @PathVariable String id, 
+            @PathVariable("id") String id, 
             @CurrentUser(required = false) User user,
             @ResolvedResource Playlist playlist) {
         
@@ -96,7 +88,7 @@ public class PlaylistController {
     @PutMapping("/{id}")
     @SecuredPlaylistResource(requireWrite = true)
     public ResponseEntity<Playlist> updatePlaylist(
-            @PathVariable String id, 
+            @PathVariable("id") String id, 
             @RequestBody Playlist playlistDetails, 
             @CurrentUser User user,
             @ResolvedResource Playlist playlist) {
@@ -122,8 +114,8 @@ public class PlaylistController {
     @PostMapping("/{playlistId}/videos/{videoId}")
     @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
     public ResponseEntity<?> addVideoToPlaylist(
-            @PathVariable String playlistId, 
-            @PathVariable String videoId,
+            @PathVariable("playlistId") String playlistId, 
+            @PathVariable("videoId") String videoId,
             @RequestBody(required = false) PlaylistVideoDetails details,
             @CurrentUser User user,
             @ResolvedResource Playlist playlist) {
@@ -158,8 +150,8 @@ public class PlaylistController {
     @DeleteMapping("/{playlistId}/videos/{videoId}")
     @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
     public ResponseEntity<?> removeVideoFromPlaylist(
-            @PathVariable String playlistId, 
-            @PathVariable String videoId,
+            @PathVariable("playlistId") String playlistId, 
+            @PathVariable("videoId") String videoId,
             @CurrentUser User user) {
         
         try {
