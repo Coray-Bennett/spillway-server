@@ -2,13 +2,21 @@ package com.coraybennett.spillway.service.impl;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
+import java.nio.channels.ReadableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
@@ -17,12 +25,21 @@ import org.springframework.web.multipart.MultipartFile;
 import com.coraybennett.spillway.service.api.StorageService;
 
 /**
- * Implementation of StorageService that uses the local file system.
+ * Enhanced implementation of StorageService that uses the local file system
+ * with NIO optimizations for better performance.
  */
 @Service
 public class FileSystemStorageService implements StorageService {
     private static final Logger logger = LoggerFactory.getLogger(FileSystemStorageService.class);
-
+    private static final Pattern FILENAME_SANITIZER = Pattern.compile("[^a-zA-Z0-9.-]");
+    private static final int BUFFER_SIZE = 64 * 1024; // 64 KB buffer size for NIO operations
+    
+    // Cache for directory existence checks to avoid repeated filesystem operations
+    private final ConcurrentHashMap<String, Boolean> directoryExistsCache = new ConcurrentHashMap<>();
+    
+    @Value("${storage.enable-nio-transfer:true}")
+    private boolean enableNioTransfer;
+    
     @Override
     public void initialize() throws IOException {
         // Ensure base directories exist
@@ -31,7 +48,10 @@ public class FileSystemStorageService implements StorageService {
             Path path = Paths.get(dir);
             if (!Files.exists(path)) {
                 Files.createDirectories(path);
+                directoryExistsCache.put(path.toString(), true);
                 logger.info("Created directory: {}", path.toAbsolutePath());
+            } else {
+                directoryExistsCache.put(path.toString(), true);
             }
         }
     }
@@ -42,33 +62,72 @@ public class FileSystemStorageService implements StorageService {
             throw new IOException("Failed to store empty file");
         }
         
-        Path destinationDir = Paths.get(destinationPath);
-        if (!Files.exists(destinationDir)) {
-            Files.createDirectories(destinationDir);
-        }
+        ensureDirectoryExists(destinationPath);
         
         String filename = sanitizeFilename(file.getOriginalFilename());
-        Path destinationFile = destinationDir.resolve(filename);
+        Path destinationFile = Paths.get(destinationPath, filename);
         
-        try (InputStream inputStream = file.getInputStream()) {
-            Files.copy(inputStream, destinationFile, StandardCopyOption.REPLACE_EXISTING);
-            logger.info("Stored file: {} in {}", filename, destinationPath);
-            return destinationFile;
+        if (enableNioTransfer) {
+            // Use NIO for more efficient file copying
+            try (ReadableByteChannel inChannel = Channels.newChannel(file.getInputStream());
+                 FileChannel outChannel = FileChannel.open(destinationFile, 
+                     StandardOpenOption.CREATE, 
+                     StandardOpenOption.TRUNCATE_EXISTING, 
+                     StandardOpenOption.WRITE)) {
+                
+                ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
+                int bytesRead;
+                
+                while ((bytesRead = inChannel.read(buffer)) != -1) {
+                    buffer.flip();
+                    outChannel.write(buffer);
+                    buffer.clear();
+                }
+                
+                logger.info("Stored file: {} in {} using NIO", filename, destinationPath);
+            }
+        } else {
+            // Fallback to standard approach
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, destinationFile, StandardCopyOption.REPLACE_EXISTING);
+                logger.info("Stored file: {} in {}", filename, destinationPath);
+            }
         }
+        
+        return destinationFile;
     }
 
     @Override
     public Path store(InputStream inputStream, String filename, String destinationPath) throws IOException {
-        Path destinationDir = Paths.get(destinationPath);
-        if (!Files.exists(destinationDir)) {
-            Files.createDirectories(destinationDir);
-        }
+        ensureDirectoryExists(destinationPath);
         
         filename = sanitizeFilename(filename);
-        Path destinationFile = destinationDir.resolve(filename);
+        Path destinationFile = Paths.get(destinationPath, filename);
         
-        Files.copy(inputStream, destinationFile, StandardCopyOption.REPLACE_EXISTING);
-        logger.info("Stored file: {} in {}", filename, destinationPath);
+        if (enableNioTransfer) {
+            // Use NIO for more efficient file copying
+            try (ReadableByteChannel inChannel = Channels.newChannel(inputStream);
+                 FileChannel outChannel = FileChannel.open(destinationFile, 
+                     StandardOpenOption.CREATE, 
+                     StandardOpenOption.TRUNCATE_EXISTING, 
+                     StandardOpenOption.WRITE)) {
+                
+                ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
+                int bytesRead;
+                
+                while ((bytesRead = inChannel.read(buffer)) != -1) {
+                    buffer.flip();
+                    outChannel.write(buffer);
+                    buffer.clear();
+                }
+                
+                logger.info("Stored file: {} in {} using NIO", filename, destinationPath);
+            }
+        } else {
+            Files.copy(inputStream, destinationFile, StandardCopyOption.REPLACE_EXISTING);
+            logger.info("Stored file: {} in {}", filename, destinationPath);
+        }
+        
         return destinationFile;
     }
 
@@ -90,32 +149,67 @@ public class FileSystemStorageService implements StorageService {
     public boolean delete(Path path) {
         try {
             if (Files.isDirectory(path)) {
+                // Use parallel stream for faster directory deletion
                 Files.walk(path)
-                    .sorted((a, b) -> b.compareTo(a)) // Sort in reverse order to delete files before directories
+                    .sorted((a, b) -> -a.compareTo(b)) // Reverse order: delete children before parents
+                    .parallel()
                     .forEach(p -> {
                         try {
-                            Files.delete(p);
+                            Files.deleteIfExists(p);
                         } catch (IOException e) {
-                            logger.warn("Failed to delete: " + p, e);
+                            logger.warn("Failed to delete: {}", p, e);
                         }
                     });
+                
+                // Update directory cache
+                directoryExistsCache.remove(path.toString());
                 return true;
             } else {
-                return Files.deleteIfExists(path);
+                boolean deleted = Files.deleteIfExists(path);
+                if (deleted) {
+                    logger.debug("Deleted file: {}", path);
+                }
+                return deleted;
             }
         } catch (IOException e) {
-            logger.error("Failed to delete path: " + path, e);
+            logger.error("Failed to delete path: {}", path, e);
             return false;
         }
     }
 
     @Override
     public boolean exists(Path path) {
+        // Check if it's a known directory first
+        String pathStr = path.toString();
+        Boolean exists = directoryExistsCache.get(pathStr);
+        if (exists != null) {
+            return exists;
+        }
+        
+        // Otherwise check filesystem
         return Files.exists(path);
     }
     
     /**
+     * Ensures a directory exists, using an internal cache to avoid repeated checks.
+     */
+    private void ensureDirectoryExists(String directoryPath) throws IOException {
+        if (directoryExistsCache.containsKey(directoryPath)) {
+            return;
+        }
+        
+        Path path = Paths.get(directoryPath);
+        if (!Files.exists(path)) {
+            Files.createDirectories(path);
+            logger.debug("Created directory: {}", path.toAbsolutePath());
+        }
+        
+        directoryExistsCache.put(directoryPath, true);
+    }
+    
+    /**
      * Sanitizes a filename to ensure it's safe for filesystem storage.
+     * Using pre-compiled pattern for better performance.
      * 
      * @param filename The filename to sanitize
      * @return Sanitized filename
@@ -124,6 +218,6 @@ public class FileSystemStorageService implements StorageService {
         if (filename == null || filename.isEmpty()) {
             return "file";
         }
-        return filename.replaceAll("[^a-zA-Z0-9.-]", "_");
+        return FILENAME_SANITIZER.matcher(filename).replaceAll("_");
     }
 }
