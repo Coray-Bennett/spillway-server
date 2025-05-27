@@ -2,7 +2,6 @@ package com.coraybennett.spillway.service.impl;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
@@ -13,10 +12,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -38,13 +37,9 @@ import com.coraybennett.spillway.service.api.VideoConversionService;
 import com.coraybennett.spillway.service.enums.QualityLevel;
 
 /**
- * Enhanced FFmpeg-based implementation of VideoConversionService with improved performance.
- * This implementation includes:
- * - Better error handling and recovery
- * - Parallel processing of different quality levels where possible
- * - Memory usage optimizations
- * - Improved hardware acceleration detection
- * - Better progress tracking
+ * FFmpeg-based implementation of VideoConversionService.
+ * Supports multiple video file formats and adaptive bitrate streaming with better performance.
+ * Uses separate FFmpeg processes for each quality level and supports any number of quality levels.
  */
 @Service
 @Primary
@@ -68,6 +63,10 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     // FFmpeg progress patterns
     private static final Pattern DURATION_PATTERN = Pattern.compile("Duration: (\\d+):(\\d+):(\\d+\\.\\d+)");
     private static final Pattern PROGRESS_PATTERN = Pattern.compile("time=(\\d+):(\\d+):(\\d+\\.\\d+)");
+    
+    // Timeout constants
+    private static final int FFPROBE_TIMEOUT_SECONDS = 30;
+    private static final int HWACC_TEST_TIMEOUT_SECONDS = 20;
     
     @Value("${server.base-url:http://localhost:8081}")
     private String baseUrl;
@@ -217,7 +216,7 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     }
 
     /**
-     * Process quality levels in parallel for faster conversion
+     * Process quality levels in parallel with properly managed progress tracking
      */
     private void processQualityLevelsInParallel(
             Path sourceFile, 
@@ -233,29 +232,51 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         int totalQualityLevels = targetQualityLevels.size();
         
+        // Progress tracking for parallel conversion
+        // Each quality level contributes equally to the total progress
+        final Map<String, Integer> qualityProgress = new ConcurrentHashMap<>();
+        final AtomicInteger overallProgress = new AtomicInteger(0);
+        
+        // Initialize progress map
+        for (QualityLevel quality : targetQualityLevels) {
+            qualityProgress.put(quality.name, 0);
+        }
+        
         // Start each quality conversion as a separate CompletableFuture
         for (int i = 0; i < totalQualityLevels; i++) {
             QualityLevel quality = targetQualityLevels.get(i);
-            int qualityIndex = i;
-            
-            // Each quality gets its own progress range
-            int baseProgress = (qualityIndex * 100) / totalQualityLevels;
-            int maxProgress = ((qualityIndex + 1) * 100) / totalQualityLevels - 1; // Leave room for completion
             
             logger.info("Starting parallel conversion for quality level {} ({} of {})", 
-                quality.name, qualityIndex + 1, totalQualityLevels);
+                quality.name, i + 1, totalQualityLevels);
             
             // Launch each conversion in a separate thread
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 try {
-                    convertQuality(
+                    convertQualityWithProgressCallback(
                         sourceFilePath,
                         outputPathString,
                         videoId,
                         quality,
                         video,
-                        baseProgress,
-                        maxProgress
+                        (progress) -> {
+                            // Update quality-specific progress
+                            qualityProgress.put(quality.name, progress);
+                            
+                            // Calculate overall progress as the average of all quality levels
+                            int totalProgress = qualityProgress.values().stream()
+                                .mapToInt(Integer::intValue)
+                                .sum();
+                            int avgProgress = totalProgress / totalQualityLevels;
+                            
+                            // Only update if progress increased
+                            int currentOverall = overallProgress.get();
+                            if (avgProgress > currentOverall) {
+                                overallProgress.set(avgProgress);
+                                video.setConversionProgress(avgProgress);
+                                videoRepository.save(video);
+                                logger.debug("Overall conversion progress: {}%", avgProgress);
+                            }
+                        }
                     );
                 } catch (Exception e) {
                     throw new RuntimeException("Failed to convert quality " + quality.name, e);
@@ -330,9 +351,9 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String durationStr = reader.readLine();
             
-            // Add a timeout to prevent hanging
-            if (!process.waitFor(30, TimeUnit.SECONDS)) {
-                process.destroy();
+            boolean completed = process.waitFor(FFPROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!completed) {
+                process.destroyForcibly();
                 logger.warn("ffprobe timed out when determining duration");
                 return 0;
             }
@@ -385,7 +406,7 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     }
 
     /**
-     * Gets the resolution of the source video with error handling and timeouts.
+     * Gets the resolution of the source video with standardized timeout handling
      */
     private int[] getVideoResolution(String videoPath) {
         try {
@@ -421,9 +442,9 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
                 }
             }
             
-            // Add timeout to prevent hanging
-            if (!process.waitFor(30, TimeUnit.SECONDS)) {
-                process.destroy();
+            boolean completed = process.waitFor(FFPROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!completed) {
+                process.destroyForcibly();
                 logger.warn("ffprobe timed out when determining resolution");
                 return getVideoResolutionAlternative(videoPath);
             }
@@ -446,6 +467,9 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
      * Alternative method to get video resolution if ffprobe fails.
      */
     private int[] getVideoResolutionAlternative(String videoPath) {
+        ProcessBuilder processBuilder = null;
+        Process process = null;
+        
         try {
             List<String> command = new ArrayList<>();
             command.add("ffmpeg");
@@ -453,53 +477,94 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
             command.add(videoPath);
             command.add("-hide_banner");
             
-            ProcessBuilder processBuilder = new ProcessBuilder(command);
-            Process process = processBuilder.start();
+            processBuilder = new ProcessBuilder(command);
+            process = processBuilder.start();
             
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
             String line;
             
-            // Add timeout to prevent hanging
-            Thread timeoutThread = new Thread(() -> {
-                try {
-                    Thread.sleep(30000); // 30 seconds timeout
-                    if (process.isAlive()) {
-                        process.destroy();
-                    }
-                } catch (InterruptedException e) {
-                    // Ignore
-                }
-            });
-            timeoutThread.setDaemon(true);
-            timeoutThread.start();
-            
+            long startTime = System.currentTimeMillis();
             while ((line = reader.readLine()) != null) {
+                // Check for timeout
+                if (System.currentTimeMillis() - startTime > FFPROBE_TIMEOUT_SECONDS * 1000) {
+                    break;
+                }
+                
                 Matcher matcher = RESOLUTION_PATTERN.matcher(line);
                 if (matcher.find()) {
                     int width = Integer.parseInt(matcher.group(1));
                     int height = Integer.parseInt(matcher.group(2));
-                    
-                    // Stop the timeout thread
-                    timeoutThread.interrupt();
-                    
-                    // Destroy the process as we have what we need
-                    if (process.isAlive()) {
-                        process.destroy();
-                    }
-                    
                     return new int[] { width, height };
                 }
             }
-            
-            // Wait for process to finish or be killed by timeout
-            process.waitFor();
-            
         } catch (Exception e) {
             logger.error("Error determining video resolution with alternative method: {}", e.getMessage());
+        } finally {
+            // Ensure process is cleaned up
+            if (process != null && process.isAlive()) {
+                process.destroyForcibly();
+            }
         }
         
         // Default to 480p if we couldn't determine resolution
         return new int[] { 854, 480 };
+    }
+    
+    /**
+     * Converts a single quality level using FFmpeg with progress callback for parallel tracking
+     */
+    private void convertQualityWithProgressCallback(
+            String sourceFile, 
+            String outputDir, 
+            String videoId,
+            QualityLevel quality, 
+            Video video,
+            ProgressCallback progressCallback) 
+            throws IOException, InterruptedException, VideoConversionException {
+        
+        // Build FFmpeg command for this quality
+        List<String> command = buildFfmpegCommand(sourceFile, outputDir, quality);
+        
+        logger.info("FFmpeg command for {}: {}", quality.name, String.join(" ", command));
+        
+        // Execute FFmpeg command
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        processBuilder.redirectErrorStream(true);
+        Process process = processBuilder.start();
+        activeConversions.put(videoId, process);
+        
+        try {
+            // Parse FFmpeg output with progress callback
+            parseFFmpegOutputWithCallback(process, progressCallback);
+            
+            boolean completed = process.waitFor(ffmpegTimeoutMinutes, TimeUnit.MINUTES);
+            if (!completed) {
+                process.destroyForcibly();
+                throw new VideoConversionException("FFmpeg conversion for " + quality.name + " timed out after " + ffmpegTimeoutMinutes + " minutes");
+            }
+            
+            int exitCode = process.exitValue();
+            if (exitCode != 0) {
+                throw new VideoConversionException("FFmpeg conversion for " + quality.name + " failed with exit code: " + exitCode);
+            }
+            
+            // Verify the output file exists
+            Path playlistPath = Paths.get(outputDir, quality.name + ".m3u8");
+            if (!Files.exists(playlistPath)) {
+                throw new VideoConversionException("Conversion failed: " + quality.name + " playlist file not found");
+            }
+            
+            // Process the playlist to update segment URLs
+            processPlaylistFile(playlistPath.toString(), videoId, quality.name + "_");
+            
+            logger.info("{} HLS playlist created successfully at {}", quality.name, playlistPath);
+            
+            // Report 100% completion for this quality
+            progressCallback.onProgress(100);
+            
+        } finally {
+            activeConversions.remove(videoId);
+        }
     }
     
     /**
@@ -511,7 +576,20 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
                           int baseProgress, int maxProgress) 
         throws IOException, InterruptedException, VideoConversionException {
         
-        // Build FFmpeg command for this quality
+        convertQualityWithProgressCallback(sourceFile, outputDir, videoId, quality, video, 
+            progress -> {
+                // Map progress to range
+                int scaledProgress = baseProgress + (progress * (maxProgress - baseProgress) / 100);
+                video.setConversionProgress(scaledProgress);
+                videoRepository.save(video);
+            }
+        );
+    }
+
+    /**
+     * Builds FFmpeg command with appropriate encoding settings
+     */
+    private List<String> buildFfmpegCommand(String sourceFile, String outputDir, QualityLevel quality) {
         List<String> command = new ArrayList<>();
         command.add("ffmpeg");
         command.add("-i");
@@ -527,134 +605,21 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
             hwAccel = cachedHardwareAcceleration;
         }
         
-        try {
-            if (hwAccel != null) {
-                applyHardwareAcceleration(command, hwAccel, quality);
-            } else {
-                // Use software encoding with optimizations
-                command.add("-preset");
-                command.add(encodingPreset);
-                command.add("-c:v");
-                command.add("libx264");
-                command.add("-b:v");
-                command.add(quality.bitrate);
-                command.add("-maxrate");
-                command.add(quality.maxRate);
-                command.add("-bufsize");
-                command.add(quality.bufSize);
-            }
-            
-            // Add audio encoding
-            command.add("-c:a");
-            command.add("aac");
-            command.add("-b:a");
-            command.add(quality.audioBitrate);
-            
-            // Add scaling parameters - use -2 to maintain aspect ratio
-            if (hwAccel == null || !hwAccel.equals("vaapi")) { // VAAPI has scaling in its filter
-                command.add("-vf");
-                command.add("scale=-2:" + quality.height);
-            }
-            
-            // Add HLS parameters with optimizations
-            command.add("-hls_time");
-            command.add(String.valueOf(segmentDuration));
-            command.add("-hls_playlist_type");
-            command.add("vod");
-            command.add("-hls_segment_type");
-            command.add("mpegts");
-            command.add("-hls_flags");
-            command.add("independent_segments");
-            command.add("-hls_segment_filename");
-            command.add(Paths.get(outputDir, quality.name + "_%03d.ts").toString());
-            
-            // Add optimization to reduce I/O operations
-            command.add("-hls_list_size");
-            command.add("0");
-            
-            // Enable fast start for web delivery
-            command.add("-movflags");
-            command.add("+faststart");
-            
-            // Output file path
-            command.add(Paths.get(outputDir, quality.name + ".m3u8").toString());
-            
-            logger.info("FFmpeg command for {}: {}", quality.name, String.join(" ", command));
-            
-            // Execute FFmpeg command
-            ProcessBuilder processBuilder = new ProcessBuilder(command);
-            processBuilder.redirectErrorStream(true);
-            Process process = processBuilder.start();
-            activeConversions.put(videoId, process);
-            
-            // Parse FFmpeg output to track progress
-            parseFFmpegOutputWithProgressRange(process, video, baseProgress, maxProgress);
-            
-            // Wait for process to complete with timeout
-            boolean completed = process.waitFor(ffmpegTimeoutMinutes, TimeUnit.MINUTES);
-            if (!completed) {
-                process.destroy();
-                throw new VideoConversionException("FFmpeg conversion for " + quality.name + " timed out after " + ffmpegTimeoutMinutes + " minutes");
-            }
-            
-            activeConversions.remove(videoId);
-            
-            // Check if the conversion succeeded
-            int exitCode = process.exitValue();
-            if (exitCode != 0) {
-                // If hardware acceleration failed, try again with software encoding
-                if (hwAccel != null) {
-                    logger.warn("Hardware acceleration failed with exit code {}. Retrying with software encoding.", exitCode);
-                    // Recursively call this method with hwAccel forced to null
-                    convertQualityWithSoftwareEncoding(sourceFile, outputDir, videoId, quality, video, baseProgress, maxProgress);
-                    return;
-                }
-                
-                throw new VideoConversionException("FFmpeg conversion for " + quality.name + " failed with exit code: " + exitCode);
-            }
-            
-            // Verify the output file exists
-            Path playlistPath = Paths.get(outputDir, quality.name + ".m3u8");
-            if (!Files.exists(playlistPath)) {
-                throw new VideoConversionException("Conversion failed: " + quality.name + " playlist file not found");
-            }
-            
-            // Process the playlist to update segment URLs
-            processPlaylistFile(playlistPath.toString(), videoId, quality.name + "_");
-            
-            logger.info("{} HLS playlist created successfully at {}", quality.name, playlistPath);
-        } catch (Exception e) {
-            if (e instanceof VideoConversionException) {
-                throw e;
-            }
-            throw new VideoConversionException("Error converting " + quality.name + ": " + e.getMessage(), e);
+        if (hwAccel != null) {
+            applyHardwareAcceleration(command, hwAccel, quality);
+        } else {
+            // Use software encoding with optimizations
+            command.add("-preset");
+            command.add(encodingPreset);
+            command.add("-c:v");
+            command.add("libx264");
+            command.add("-b:v");
+            command.add(quality.bitrate);
+            command.add("-maxrate");
+            command.add(quality.maxRate);
+            command.add("-bufsize");
+            command.add(quality.bufSize);
         }
-    }
-
-    /**
-     * Fallback method to convert with software encoding when hardware acceleration fails
-     */
-    private void convertQualityWithSoftwareEncoding(String sourceFile, String outputDir, String videoId, 
-                                              QualityLevel quality, Video video,
-                                              int baseProgress, int maxProgress) 
-            throws IOException, InterruptedException, VideoConversionException {
-        
-        List<String> command = new ArrayList<>();
-        command.add("ffmpeg");
-        command.add("-i");
-        command.add(sourceFile);
-        
-        // Software encoding with optimizations
-        command.add("-preset");
-        command.add(encodingPreset);
-        command.add("-c:v");
-        command.add("libx264");
-        command.add("-b:v");
-        command.add(quality.bitrate);
-        command.add("-maxrate");
-        command.add(quality.maxRate);
-        command.add("-bufsize");
-        command.add(quality.bufSize);
         
         // Add audio encoding
         command.add("-c:a");
@@ -662,11 +627,13 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         command.add("-b:a");
         command.add(quality.audioBitrate);
         
-        // Add scaling parameters
-        command.add("-vf");
-        command.add("scale=-2:" + quality.height);
+        // Add scaling parameters - use -2 to maintain aspect ratio
+        if (hwAccel == null || !hwAccel.equals("vaapi")) { // VAAPI has scaling in its filter
+            command.add("-vf");
+            command.add("scale=-2:" + quality.height);
+        }
         
-        // Add HLS parameters
+        // Add HLS parameters with optimizations
         command.add("-hls_time");
         command.add(String.valueOf(segmentDuration));
         command.add("-hls_playlist_type");
@@ -677,61 +644,19 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         command.add("independent_segments");
         command.add("-hls_segment_filename");
         command.add(Paths.get(outputDir, quality.name + "_%03d.ts").toString());
-        
-        // Add optimization for reduced I/O
         command.add("-hls_list_size");
         command.add("0");
-        
-        // Enable fast start for web delivery
         command.add("-movflags");
         command.add("+faststart");
-        
         command.add(Paths.get(outputDir, quality.name + ".m3u8").toString());
         
-        logger.info("Fallback FFmpeg command for {}: {}", quality.name, String.join(" ", command));
-        
-        // Execute FFmpeg command
-        ProcessBuilder processBuilder = new ProcessBuilder(command);
-        processBuilder.redirectErrorStream(true);
-        Process process = processBuilder.start();
-        activeConversions.put(videoId, process);
-        
-        // Parse FFmpeg output to track progress
-        parseFFmpegOutputWithProgressRange(process, video, baseProgress, maxProgress);
-        
-        // Wait for process to complete with timeout
-        boolean completed = process.waitFor(ffmpegTimeoutMinutes, TimeUnit.MINUTES);
-        if (!completed) {
-            process.destroy();
-            throw new VideoConversionException("Software FFmpeg conversion for " + quality.name + " timed out after " + ffmpegTimeoutMinutes + " minutes");
-        }
-        
-        activeConversions.remove(videoId);
-        
-        // Check if the conversion succeeded
-        int exitCode = process.exitValue();
-        if (exitCode != 0) {
-            throw new VideoConversionException("Software FFmpeg conversion for " + quality.name + " failed with exit code: " + exitCode);
-        }
-        
-        // Verify the output file exists
-        Path playlistPath = Paths.get(outputDir, quality.name + ".m3u8");
-        if (!Files.exists(playlistPath)) {
-            throw new VideoConversionException("Conversion failed: " + quality.name + " playlist file not found");
-        }
-        
-        // Process the playlist to update segment URLs
-        processPlaylistFile(playlistPath.toString(), videoId, quality.name + "_");
-        
-        logger.info("{} HLS playlist created successfully with software encoding at {}", quality.name, playlistPath);
+        return command;
     }
 
     /**
-     * Parses FFmpeg output to track conversion progress within a specified range.
-     * Maps FFmpeg's 0-100% to baseProgress-maxProgress.
-     * Optimized to reduce database updates.
+     * Parses FFmpeg output and reports progress through callback
      */
-    private void parseFFmpegOutputWithProgressRange(Process process, Video video, int baseProgress, int maxProgress) {
+    private void parseFFmpegOutputWithCallback(Process process, ProgressCallback callback) {
         BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
         
         double totalSeconds = 0;
@@ -740,20 +665,14 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         
         try {
             while ((line = reader.readLine()) != null) {
-                // Only log debug output occasionally to reduce overhead
-                if (Math.random() < 0.01) {
-                    logger.debug("FFmpeg output: {}", line);
-                }
-                
                 // Extract duration information
                 Matcher durationMatcher = DURATION_PATTERN.matcher(line);
-                if (durationMatcher.find() && totalSeconds == 0) { // Only parse duration once
+                if (durationMatcher.find() && totalSeconds == 0) {
                     totalSeconds = parseTimeToSeconds(
                         durationMatcher.group(1),
                         durationMatcher.group(2),
                         durationMatcher.group(3)
                     );
-                    logger.info("Video duration: {} seconds", totalSeconds);
                 }
                 
                 // Extract progress information
@@ -765,21 +684,12 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
                         progressMatcher.group(3)
                     );
                     
-                    // Calculate ffmpeg's native progress (0-100%)
-                    int ffmpegProgress = (int) ((currentSeconds / totalSeconds) * 100);
+                    int progress = Math.min((int) ((currentSeconds / totalSeconds) * 100), 99);
                     
-                    // Map to our progress range (baseProgress-maxProgress)
-                    int scaledProgress = baseProgress + (ffmpegProgress * (maxProgress - baseProgress) / 100);
-                    
-                    // Only update the database if progress has changed meaningfully
-                    // This reduces database load significantly for long conversions
-                    if (scaledProgress > lastReportedProgress + 4 || 
-                        (scaledProgress > lastReportedProgress && scaledProgress >= maxProgress - 1)) {
-                        
-                        lastReportedProgress = scaledProgress;
-                        video.setConversionProgress(scaledProgress);
-                        videoRepository.save(video);
-                        logger.debug("Conversion progress: {}%", scaledProgress);
+                    // Only report progress if it has changed meaningfully
+                    if (progress > lastReportedProgress) {
+                        lastReportedProgress = progress;
+                        callback.onProgress(progress);
                     }
                 }
             }
@@ -790,7 +700,6 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
 
     /**
      * Creates a master playlist that references all quality variants with fully qualified URLs.
-     * Optimized for better readability and performance.
      */
     private void createMasterPlaylist(String outputDirectory, String videoId, List<QualityLevel> qualities) 
             throws IOException {
@@ -817,7 +726,6 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     
     /**
      * Process a playlist file to update segment URLs.
-     * Optimized implementation using streams for better performance.
      */
     private void processPlaylistFile(String path, String videoId, String segmentPrefix) throws IOException {
         File playlist = new File(path);
@@ -853,7 +761,7 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     }
 
     /**
-     * Cleans up resources on error with improved error handling.
+     * Cleans up resources on error.
      */
     private void cleanupOnError(Path inputPath, Path outputPath) {
         if (inputPath != null) {
@@ -876,8 +784,7 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     }
 
     /**
-     * Detects available hardware acceleration methods with enhanced reliability.
-     * Uses a cached result to avoid repeated detection.
+     * Detects available hardware acceleration methods.
      */
     private String detectHardwareAcceleration() {
         if (!hardwareAccelerationEnabled) {
@@ -902,10 +809,9 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
             ProcessBuilder processBuilder = new ProcessBuilder(command);
             Process process = processBuilder.start();
             
-            // Add timeout to prevent hanging
-            boolean completed = process.waitFor(20, TimeUnit.SECONDS);
+            boolean completed = process.waitFor(HWACC_TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!completed) {
-                process.destroy();
+                process.destroyForcibly();
                 logger.warn("Timeout checking hardware encoders");
                 return null;
             }
@@ -940,71 +846,81 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
                 continue;
             }
             
-            try {
-                // Create a quick 1-second test
-                List<String> testCommand = new ArrayList<>();
-                testCommand.add("ffmpeg");
-                testCommand.add("-f");
-                testCommand.add("lavfi");
-                testCommand.add("-i");
-                testCommand.add("testsrc=duration=1:size=640x360:rate=30");
-                testCommand.add("-c:v");
-                testCommand.add(encoder);
-                
-                // Add specific flags for different acceleration types
-                switch (accelType) {
-                    case "vaapi":
-                        testCommand.add("-vaapi_device");
-                        testCommand.add("/dev/dri/renderD128");
-                        testCommand.add("-vf");
-                        testCommand.add("format=nv12|vaapi,hwupload");
-                        break;
-                        
-                    case "qsv":
-                        testCommand.add("-preset");
-                        testCommand.add("faster");
-                        break;
-                        
-                    case "nvenc":
-                        testCommand.add("-preset");
-                        testCommand.add("p4");
-                        break;
-                }
-                
-                testCommand.add("-f");
-                testCommand.add("null");
-                testCommand.add("-");
-                
-                ProcessBuilder testProcessBuilder = new ProcessBuilder(testCommand);
-                testProcessBuilder.redirectErrorStream(true);
-                Process testProcess = testProcessBuilder.start();
-                
-                // Add timeout for the test
-                boolean testCompleted = testProcess.waitFor(20, TimeUnit.SECONDS);
-                if (!testCompleted) {
-                    testProcess.destroy();
-                    logger.warn("Hardware acceleration test timed out for {}", accelType);
-                    continue;
-                }
-                
-                int testExitCode = testProcess.exitValue();
-                if (testExitCode == 0) {
-                    logger.info("Hardware acceleration validated: {} using {}", accelType, encoder);
-                    return accelType;
-                } else {
-                    logger.warn("Hardware acceleration test failed for {} with exit code {}", accelType, testExitCode);
-                }
-            } catch (Exception e) {
-                logger.warn("Error testing hardware acceleration {}: {}", accelType, e.getMessage());
+            if (testHardwareEncoder(accelType, encoder)) {
+                logger.info("Hardware acceleration validated: {} using {}", accelType, encoder);
+                return accelType;
             }
         }
         
         logger.info("No working hardware acceleration found, falling back to software encoding");
         return null;
     }
+    
+    /**
+     * Tests if a hardware encoder actually works
+     */
+    private boolean testHardwareEncoder(String accelType, String encoder) {
+        Process testProcess = null;
+        
+        try {
+            List<String> testCommand = new ArrayList<>();
+            testCommand.add("ffmpeg");
+            testCommand.add("-f");
+            testCommand.add("lavfi");
+            testCommand.add("-i");
+            testCommand.add("testsrc=duration=1:size=640x360:rate=30");
+            testCommand.add("-c:v");
+            testCommand.add(encoder);
+            
+            // Add specific flags for different acceleration types
+            switch (accelType) {
+                case "vaapi":
+                    testCommand.add("-vaapi_device");
+                    testCommand.add("/dev/dri/renderD128");
+                    testCommand.add("-vf");
+                    testCommand.add("format=nv12|vaapi,hwupload");
+                    break;
+                    
+                case "qsv":
+                    testCommand.add("-preset");
+                    testCommand.add("faster");
+                    break;
+                    
+                case "nvenc":
+                    testCommand.add("-preset");
+                    testCommand.add("p4");
+                    break;
+            }
+            
+            testCommand.add("-f");
+            testCommand.add("null");
+            testCommand.add("-");
+            
+            ProcessBuilder testProcessBuilder = new ProcessBuilder(testCommand);
+            testProcessBuilder.redirectErrorStream(true);
+            testProcess = testProcessBuilder.start();
+            
+            boolean testCompleted = testProcess.waitFor(HWACC_TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!testCompleted) {
+                logger.warn("Hardware acceleration test timed out for {}", accelType);
+                return false;
+            }
+            
+            int testExitCode = testProcess.exitValue();
+            return testExitCode == 0;
+            
+        } catch (Exception e) {
+            logger.warn("Error testing hardware acceleration {}: {}", accelType, e.getMessage());
+            return false;
+        } finally {
+            if (testProcess != null && testProcess.isAlive()) {
+                testProcess.destroyForcibly();
+            }
+        }
+    }
 
     /**
-     * Modify FFmpeg command for hardware acceleration with optimized settings.
+     * Modify FFmpeg command for hardware acceleration
      */
     private void applyHardwareAcceleration(List<String> command, String acceleration, QualityLevel quality) {
         if (acceleration == null) return;
@@ -1015,8 +931,6 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
                 command.add("h264_nvenc");
                 command.add("-preset");
                 command.add("p4");  // Lower values are higher quality but slower
-                command.add("-tune");
-                command.add("hq"); // High quality tuning
                 break;
                 
             case "qsv":
@@ -1024,19 +938,15 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
                 command.add("h264_qsv");
                 command.add("-preset");
                 command.add("faster");
-                command.add("-look_ahead");
-                command.add("1"); // Enable lookahead for better quality
                 break;
                 
             case "vaapi":
                 command.add("-vaapi_device");
                 command.add("/dev/dri/renderD128");
                 command.add("-vf");
-                command.add("format=nv12|vaapi,hwupload,scale_vaapi=w=-2:h=" + quality.height);
+                command.add("format=nv12|vaapi,hwupload");
                 command.add("-c:v");
                 command.add("h264_vaapi");
-                command.add("-qp");
-                command.add("24"); // Quality parameter for VAAPI
                 break;
                 
             case "videotoolbox":
@@ -1044,8 +954,6 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
                 command.add("h264_videotoolbox");
                 command.add("-profile:v");
                 command.add("main");
-                command.add("-q:v");
-                command.add("50"); // Quality setting for videotoolbox
                 break;
         }
         
@@ -1056,5 +964,12 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         command.add(quality.maxRate);
         command.add("-bufsize");
         command.add(quality.bufSize);
+    }
+    
+    /**
+     * Callback interface for progress tracking
+     */
+    private interface ProgressCallback {
+        void onProgress(int percentage);
     }
 }

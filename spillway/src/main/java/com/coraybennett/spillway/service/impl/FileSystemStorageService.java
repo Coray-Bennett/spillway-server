@@ -76,9 +76,8 @@ public class FileSystemStorageService implements StorageService {
                      StandardOpenOption.WRITE)) {
                 
                 ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
-                int bytesRead;
                 
-                while ((bytesRead = inChannel.read(buffer)) != -1) {
+                while ((inChannel.read(buffer)) != -1) {
                     buffer.flip();
                     outChannel.write(buffer);
                     buffer.clear();
@@ -113,9 +112,8 @@ public class FileSystemStorageService implements StorageService {
                      StandardOpenOption.WRITE)) {
                 
                 ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
-                int bytesRead;
                 
-                while ((bytesRead = inChannel.read(buffer)) != -1) {
+                while ((inChannel.read(buffer)) != -1) {
                     buffer.flip();
                     outChannel.write(buffer);
                     buffer.clear();
