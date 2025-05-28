@@ -16,7 +16,7 @@
         <span>Processing Failed</span>
       </div>
       
-      <div v-else-if="video.duration" class="duration-badge">
+      <div v-else class="duration-badge">
         {{ formatDuration(video.duration) }}
       </div>
     </div>
@@ -40,6 +40,8 @@
 
 <script>
 import { useVideoStore } from '../stores/video'
+import { formatDate } from '@/utils/date'
+import { formatDuration } from '@/utils/metadata'
 
 export default {
   name: 'VideoCard',
@@ -67,30 +69,8 @@ export default {
   },
   
   methods: {
-    formatDuration(seconds) {
-      if (!seconds) return '00:00'
-      
-      const mins = Math.floor(seconds / 60)
-      const secs = Math.floor(seconds % 60)
-      
-      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-    },
-    
-    formatDate(dateArr) {
-      if (!dateArr) return ''
-      
-      let year, month, day, etc
-      [year, month, day, ...etc] = dateArr
-
-      const dateString = `${year}/${month}/${day}`
-
-      const date = new Date(dateString)
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      })
-    }
+    formatDuration,
+    formatDate
   }
 }
 </script>

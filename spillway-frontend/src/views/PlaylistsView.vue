@@ -97,6 +97,7 @@
 import { ref, onMounted, reactive } from 'vue'
 import { useVideoStore } from '../stores/video'
 import BaseIcon from '../components/icons/BaseIcon.vue'
+import { formatDate } from '@/utils/date'
 
 const videoStore = useVideoStore()
 const playlists = ref(new Map())
@@ -137,22 +138,6 @@ async function togglePlaylist(playlistId) {
       }
     }
   }
-}
-
-function formatDate(dateArr) {
-  if (!dateArr) return ''
-  
-  let year, month, day, etc
-  [year, month, day, ...etc] = dateArr
-
-  const dateString = `${year}/${month}/${day}`
-
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
 }
 
 function formatDuration(seconds) {

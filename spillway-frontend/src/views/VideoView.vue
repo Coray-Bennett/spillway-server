@@ -104,6 +104,8 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useVideoStore } from '../stores/video'
+import { formatDate } from '@/utils/date'
+import { formatDuration } from '@/utils/metadata'
 import Hls from 'hls.js'
 import VideoEditModal from '../components/VideoEditModal.vue'
 import PlaylistManager from '../components/PlaylistManager.vue'
@@ -224,19 +226,6 @@ function onVideoError(event) {
   }
 }
 
-function formatDuration(seconds) {
-  if (!seconds) return '0:00'
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const remainingSeconds = seconds % 60
-  
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
-  } else {
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
-  }
-}
-
 function formatStatus(status) {
   if (!status) return 'Unknown'
   const statusMap = {
@@ -247,11 +236,6 @@ function formatStatus(status) {
     'CANCELLED': 'Cancelled'
   }
   return statusMap[status] || status
-}
-
-function formatDate(dateString) {
-  if (!dateString) return 'N/A'
-  return new Date(dateString).toLocaleString()
 }
 
 onMounted(async () => {
