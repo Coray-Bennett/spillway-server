@@ -25,7 +25,7 @@
       </div>
       
       <div v-else class="playlists-grid grid grid-2">
-        <div v-for="playlist in playlists" :key="playlist.id" class="playlist-card card">
+        <div v-for="playlist in playlistsArr" :key="playlist.id" class="playlist-card card">
           <div class="playlist-header">
             <h3 class="playlist-title">{{ playlist.name }}</h3>
             <button @click="togglePlaylist(playlist.id)" class="btn btn-secondary btn-icon">
@@ -99,7 +99,8 @@ import { useVideoStore } from '../stores/video'
 import BaseIcon from '../components/icons/BaseIcon.vue'
 
 const videoStore = useVideoStore()
-const playlists = ref([])
+const playlists = ref(new Map())
+const playlistsArr = ref([])
 const isLoading = ref(false)
 const error = ref('')
 const expandedPlaylists = ref(new Set())
@@ -109,7 +110,10 @@ onMounted(async () => {
   try {
     isLoading.value = true
     await videoStore.getMyPlaylists()
-    playlists.value = videoStore.playlists
+    for(const playlist of videoStore.playlists) {
+      playlists.value.set(playlist.id, playlist)
+    }
+    playlistsArr.value = videoStore.playlists
   } catch (err) {
     error.value = 'Failed to load playlists'
     console.error(err)
@@ -125,9 +129,8 @@ async function togglePlaylist(playlistId) {
     expandedPlaylists.value.add(playlistId)
     
     if (!playlistVideos[playlistId]) {
-      // Load videos for this playlist
       try {
-        const videos = await videoStore.getPlaylistVideos(playlistId)
+        const videos = playlists.value.get(playlistId).videos
         playlistVideos[playlistId] = videos
       } catch (err) {
         console.error('Failed to load playlist videos:', err)
@@ -136,9 +139,20 @@ async function togglePlaylist(playlistId) {
   }
 }
 
-function formatDate(dateString) {
-  if (!dateString) return 'N/A'
-  return new Date(dateString).toLocaleDateString()
+function formatDate(dateArr) {
+  if (!dateArr) return ''
+  
+  let year, month, day, etc
+  [year, month, day, ...etc] = dateArr
+
+  const dateString = `${year}/${month}/${day}`
+
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
 }
 
 function formatDuration(seconds) {
