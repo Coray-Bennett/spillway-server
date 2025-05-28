@@ -1,326 +1,309 @@
 <template>
-    <div class="videos-view">
-      <div class="container">
-        <header class="page-header">
-          <div class="header-content">
-            <h1 class="page-title">My Videos</h1>
-            <router-link to="/upload" class="btn btn-primary">
-              <BaseIcon name="plus" :size="16" />
-               Upload Video
-            </router-link>
-          </div>
-        </header>
-        
-        <div v-if="isLoading" class="loading-spinner">
-          Loading videos...
-        </div>
-        
-        <div v-else-if="videos.length === 0" class="empty-state">
-          <BaseIcon name="video" :size="64" class="empty-icon" />
-          <h2 class="empty-title">No videos yet</h2>
-          <p class="empty-text">Start by uploading your first video</p>
-          <router-link to="/upload" class="btn btn-primary">
-            <BaseIcon name="upload" :size="20" />
-            Upload Video
-          </router-link>
-        </div>
-        
-        <div v-else class="videos-grid grid grid-3">
-          <div v-for="video in videos" :key="video.id" class="video-card card">
-            <div class="video-thumbnail">
-              <div class="thumbnail-placeholder">
-                <span class="video-type-badge">{{ video.type }}</span>
-              </div>
-              <div class="video-overlay">
-                <router-link :to="`/video/${video.id}`" class="play-button">
-                  <BaseIcon name="play" :size="24" />
-                </router-link>
-              </div>
-            </div>
-            
-            <div class="video-info">
-              <h3 class="video-title">{{ video.title }}</h3>
-              <div class="video-meta">
-                <span class="video-genre">{{ video.genre || 'No genre' }}</span>
-                <span class="video-duration">{{ formatDuration(video.length) }}</span>
-              </div>
-              <div class="video-status">
-                <span 
-                  :class="['status-badge', video.conversionStatus?.toLowerCase()]"
-                >
-                  {{ formatStatus(video.conversionStatus) }}
-                </span>
-                <span v-if="video.conversionStatus === 'IN_PROGRESS' && video.conversionProgress" 
-                      class="progress-text">
-                  {{ video.conversionProgress }}%
-                </span>
-              </div>
-              
-              <router-link :to="`/video/${video.id}`" class="btn btn-secondary btn-sm">
-                View Details
-              </router-link>
-            </div>
-          </div>
-        </div>
-        
-        <div v-if="error" class="error-text">
-          {{ error }}
-        </div>
+  <div class="videos-view">
+    <h1>Videos</h1>
+    
+    <VideoSearchFilter @search-performed="handleSearchPerformed" />
+    
+    <div class="videos-actions">
+      <div class="search-results-info" v-if="hasSearchResults">
+        Found {{ totalResults }} videos
+      </div>
+      <router-link 
+        v-if="isAuthenticated" 
+        to="/upload" 
+        class="upload-button"
+      >
+        <i class="fas fa-upload"></i> Upload Video
+      </router-link>
+    </div>
+    
+    <div v-if="error" class="error-message">
+      {{ error }}
+    </div>
+    
+    <div v-if="isLoading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading videos...</p>
+    </div>
+    
+    <div v-else-if="hasSearchResults" class="videos-grid">
+      <VideoCard
+        v-for="video in searchResults"
+        :key="video.id"
+        :video="video"
+        @click.native="selectVideo(video)"
+        class="video-card"
+      />
+    </div>
+    
+    <div v-else-if="recentVideos.length > 0" class="section">
+      <h2>Recent Videos</h2>
+      <div class="videos-grid">
+        <VideoCard
+          v-for="video in recentVideos"
+          :key="video.id"
+          :video="video"
+          @click.native="selectVideo(video)"
+          class="video-card"
+        />
       </div>
     </div>
-  </template>
-  
-  <script setup>
-  import { ref, onMounted } from 'vue'
-  import { useVideoStore } from '../stores/video'
-  import BaseIcon from '../components/icons/BaseIcon.vue'
-  
-  const videoStore = useVideoStore()
-  const videos = ref([])
-  const isLoading = ref(false)
-  const error = ref('')
-  
-  onMounted(async () => {
-    try {
-      isLoading.value = true
-      await videoStore.getMyVideos()
-      videos.value = videoStore.videos
-    } catch (err) {
-      error.value = 'Failed to load videos'
-      console.error(err)
-    } finally {
-      isLoading.value = false
-    }
-  })
-  
-  function formatDuration(seconds) {
-    if (!seconds) return '0:00'
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    const remainingSeconds = seconds % 60
     
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
-    } else {
-      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
-    }
-  }
-  
-  function formatStatus(status) {
-    if (!status) return 'Unknown'
-    const statusMap = {
-      'PENDING': 'Pending',
-      'IN_PROGRESS': 'Converting',
-      'COMPLETED': 'Ready',
-      'FAILED': 'Failed',
-      'CANCELLED': 'Cancelled'
-    }
-    return statusMap[status] || status
-  }
-  </script>
-  
-  <style scoped>
-    .empty-icon {
-    color: var(--accent-color);
-    opacity: 0.5;
-    margin-bottom: 1rem;
-  }
+    <div v-else class="empty-state">
+      <p>No videos found.</p>
+      <router-link v-if="isAuthenticated" to="/upload" class="upload-button">
+        Upload your first video
+      </router-link>
+    </div>
+    
+    <!-- Pagination controls -->
+    <div v-if="totalPages > 1" class="pagination">
+      <button 
+        @click="changePage(currentPage - 1)" 
+        :disabled="currentPage === 0"
+        class="pagination-button"
+      >
+        Previous
+      </button>
+      
+      <span class="page-info">
+        Page {{ currentPage + 1 }} of {{ totalPages }}
+      </span>
+      
+      <button 
+        @click="changePage(currentPage + 1)" 
+        :disabled="currentPage >= totalPages - 1"
+        class="pagination-button"
+      >
+        Next
+      </button>
+    </div>
+  </div>
+</template>
 
-  .play-button {
-    width: 48px;
-    height: 48px;
-    background-color: rgba(255, 255, 255, 0.9);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition);
-    color: var(--primary-bg);
-  }
+<script>
+import VideoCard from '../components/VideoCard.vue'
+import VideoSearchFilter from '../components/VideoSearchFilter.vue'
+import { useSearchStore } from '../stores/search'
+import { useAuthStore } from '../stores/auth'
+import { mapActions, mapState } from 'pinia'
 
-  .play-button:hover {
-    background-color: white;
-    transform: scale(1.1);
-    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.3);
-  }
-
-  .header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
+export default {
+  name: 'VideosView',
   
-  .video-card {
-    overflow: hidden;
-    transition: var(--transition);
-  }
+  components: {
+    VideoCard,
+    VideoSearchFilter
+  },
   
-  .video-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  }
+  setup() {
+    const searchStore = useSearchStore()
+    const authStore = useAuthStore()
+    return { searchStore, authStore }
+  },
   
-  .video-thumbnail {
-    position: relative;
-    height: 200px;
-    background-color: var(--tertiary-bg);
-  }
-  
-  .thumbnail-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(45deg, var(--secondary-bg) 25%, var(--tertiary-bg) 25%, var(--tertiary-bg) 50%, var(--secondary-bg) 50%, var(--secondary-bg) 75%, var(--tertiary-bg) 75%, var(--tertiary-bg) 100%);
-    background-size: 40px 40px;
-    opacity: 0.3;
-  }
-  
-  .video-type-badge {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    background-color: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 0.25rem 0.75rem;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-  }
-  
-  .video-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: var(--transition);
-  }
-  
-  .video-card:hover .video-overlay {
-    opacity: 1;
-  }
-  
-  .play-button {
-    width: 48px;
-    height: 48px;
-    background-color: rgba(255, 255, 255, 0.9);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    transition: var(--transition);
-  }
-  
-  .play-button:hover {
-    background-color: white;
-    transform: scale(1.1);
-  }
-  
-  .video-info {
-    padding: 1rem;
-  }
-  
-  .video-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .video-meta {
-    display: flex;
-    justify-content: space-between;
-    color: var(--secondary-text);
-    font-size: 0.875rem;
-    margin-bottom: 0.75rem;
-  }
-  
-  .video-status {
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  
-  .status-badge {
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    font-weight: 500;
-  }
-  
-  .status-badge.pending {
-    background-color: rgba(148, 163, 184, 0.2);
-    color: #94a3b8;
-  }
-  
-  .status-badge.in_progress {
-    background-color: rgba(59, 130, 246, 0.2);
-    color: var(--accent-color);
-  }
-  
-  .status-badge.completed {
-    background-color: rgba(16, 185, 129, 0.2);
-    color: var(--success-color);
-  }
-  
-  .status-badge.failed {
-    background-color: rgba(239, 68, 68, 0.2);
-    color: var(--danger-color);
-  }
-  
-  .status-badge.cancelled {
-    background-color: rgba(107, 114, 128, 0.2);
-    color: #6b7280;
-  }
-  
-  .progress-text {
-    font-size: 0.75rem;
-    color: var(--secondary-text);
-  }
-  
-  .btn-sm {
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-  }
-  
-  .empty-state {
-    text-align: center;
-    max-width: 500px;
-    margin: 4rem auto;
-  }
-  
-  .empty-icon {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-  }
-  
-  .empty-title {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-  }
-  
-  .empty-text {
-    color: var(--secondary-text);
-    margin-bottom: 2rem;
-  }
-  
-  @media (max-width: 768px) {
-    .header-content {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 1rem;
+  data() {
+    return {
+      currentSearchQuery: ''
     }
+  },
+  
+  computed: {
+    ...mapState(useSearchStore, [
+      'searchResults', 
+      'recentVideos', 
+      'isLoading', 
+      'error', 
+      'totalResults',
+      'totalPages',
+      'currentPage'
+    ]),
+    
+    isAuthenticated() {
+      return this.authStore.isAuthenticated
+    },
+    
+    hasSearchResults() {
+      return this.searchResults && this.searchResults.length > 0
+    }
+  },
+  
+  methods: {
+    ...mapActions(useSearchStore, [
+      'searchVideos', 
+      'getRecentVideos',
+      'clearSearch'
+    ]),
+    
+    async handleSearchPerformed(query) {
+      this.currentSearchQuery = query
+    },
+    
+    selectVideo(video) {
+      this.$router.push(`/video/${video.id}`)
+    },
+    
+    async changePage(page) {
+      if (page < 0 || page >= this.totalPages) return
+      
+      try {
+        const searchParams = {
+          query: this.currentSearchQuery,
+          page,
+          size: 20
+        }
+        
+        await this.searchVideos(searchParams)
+      } catch (error) {
+        console.error('Failed to change page:', error)
+      }
+    }
+  },
+  
+  async created() {
+    try {
+      // First try to load search results if there was a search
+      const searchQuery = this.$route.query.q
+      if (searchQuery) {
+        this.currentSearchQuery = searchQuery
+        await this.searchVideos({ query: searchQuery, page: 0, size: 20 })
+      } else {
+        // Otherwise load recent videos
+        await this.getRecentVideos()
+      }
+    } catch (error) {
+      console.error('Failed to load videos:', error)
+    }
+  },
+  
+  beforeDestroy() {
+    this.clearSearch()
   }
-  </style>
+}
+</script>
+
+<style scoped>
+.videos-view {
+  padding: 1.5rem;
+}
+
+h1 {
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+.videos-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.upload-button {
+  padding: 0.6rem 1.2rem;
+  background-color: #0066cc;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.upload-button:hover {
+  background-color: #0055aa;
+}
+
+.videos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.video-card {
+  cursor: pointer;
+}
+
+.section h2 {
+  margin: 1.5rem 0 1rem;
+}
+
+.error-message {
+  background-color: #ffeeee;
+  color: #cc0000;
+  padding: 0.8rem;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.spinner {
+  width: 3rem;
+  height: 3rem;
+  border: 3px solid rgba(0, 102, 204, 0.3);
+  border-radius: 50%;
+  border-top-color: #0066cc;
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: 1rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+}
+
+.empty-state p {
+  margin-bottom: 1.5rem;
+  color: #666;
+  font-size: 1.2rem;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 2rem;
+  gap: 1rem;
+}
+
+.pagination-button {
+  padding: 0.5rem 1rem;
+  background-color: #f1f1f1;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pagination-button:hover:not(:disabled) {
+  background-color: #e1e1e1;
+}
+
+.pagination-button:disabled {
+  background-color: #f9f9f9;
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.page-info {
+  color: #666;
+}
+
+.search-results-info {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>
