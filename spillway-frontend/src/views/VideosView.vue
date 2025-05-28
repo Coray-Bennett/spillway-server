@@ -36,6 +36,19 @@
       />
     </div>
     
+    <div v-else-if="myVideos.length > 0" class="section">
+      <h2>Your Videos</h2>
+      <div class="videos-grid">
+        <VideoCard
+          v-for="video in myVideos"
+          :key="video.id"
+          :video="video"
+          @click.native="selectVideo(video)"
+          class="video-card"
+        />
+      </div>
+    </div>
+    
     <div v-else-if="recentVideos.length > 0" class="section">
       <h2>Recent Videos</h2>
       <div class="videos-grid">
@@ -85,6 +98,7 @@
 import VideoCard from '../components/VideoCard.vue'
 import VideoSearchFilter from '../components/VideoSearchFilter.vue'
 import { useSearchStore } from '../stores/search'
+import { useVideoStore } from '../stores/video' 
 import { useAuthStore } from '../stores/auth'
 import { mapActions, mapState } from 'pinia'
 
@@ -98,13 +112,15 @@ export default {
   
   setup() {
     const searchStore = useSearchStore()
+    const videoStore = useVideoStore()
     const authStore = useAuthStore()
-    return { searchStore, authStore }
+    return { searchStore, videoStore, authStore }
   },
   
   data() {
     return {
-      currentSearchQuery: ''
+      currentSearchQuery: '',
+      myVideos: []
     }
   },
   
@@ -134,6 +150,25 @@ export default {
       'getRecentVideos',
       'clearSearch'
     ]),
+    
+    async loadMyVideos() {
+      this.isLoading = true
+      try {
+        const result = await this.videoStore.getMyVideos()
+        if (result && Array.isArray(result)) {
+          this.myVideos = result
+        }
+      } catch (error) {
+        console.error('Failed to load my videos:', error)
+        if (error.response && error.response.status === 401) {
+          this.error = 'Please log in to view your videos'
+        } else {
+          this.error = error.message || 'Failed to load videos'
+        }
+      } finally {
+        this.isLoading = false
+      }
+    },
     
     async handleSearchPerformed(query) {
       this.currentSearchQuery = query
@@ -168,8 +203,15 @@ export default {
         this.currentSearchQuery = searchQuery
         await this.searchVideos({ query: searchQuery, page: 0, size: 20 })
       } else {
-        // Otherwise load recent videos
-        await this.getRecentVideos()
+        // If authenticated, load user's videos first
+        if (this.isAuthenticated) {
+          await this.loadMyVideos()
+        }
+        
+        // If no videos found or not authenticated, load recent videos as fallback
+        if (this.myVideos.length === 0) {
+          await this.getRecentVideos()
+        }
       }
     } catch (error) {
       console.error('Failed to load videos:', error)
@@ -178,18 +220,30 @@ export default {
   
   beforeDestroy() {
     this.clearSearch()
+  },
+  
+  watch: {
+    isAuthenticated(newVal) {
+      if (newVal && this.myVideos.length === 0 && !this.currentSearchQuery) {
+        // Re-load videos when authentication status changes
+        this.loadMyVideos()
+      }
+    }
   }
 }
 </script>
 
 <style scoped>
+/* Dark mode styles */
 .videos-view {
   padding: 1.5rem;
+  background-color: var(--bg-primary, #1a1a1a);
+  color: var(--text-primary, #e0e0e0);
+  min-height: 100vh;
 }
 
-h1 {
-  margin-bottom: 1.5rem;
-  color: #333;
+h1, h2 {
+  color: var(--text-primary, #e0e0e0);
 }
 
 .videos-actions {
@@ -201,17 +255,19 @@ h1 {
 
 .upload-button {
   padding: 0.6rem 1.2rem;
-  background-color: #0066cc;
+  background-color: var(--accent-primary, #3a86ff);
   color: white;
   text-decoration: none;
   border-radius: 4px;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  border: none;
 }
 
 .upload-button:hover {
-  background-color: #0055aa;
+  background-color: var(--button-primary-hover, #2a76ef);
+  text-decoration: none;
 }
 
 .videos-grid {
@@ -223,18 +279,29 @@ h1 {
 
 .video-card {
   cursor: pointer;
+  background-color: var(--card-bg, #2a2a2a);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.video-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg, 0 10px 15px rgba(0, 0, 0, 0.2));
 }
 
 .section h2 {
   margin: 1.5rem 0 1rem;
+  color: var(--text-primary, #e0e0e0);
 }
 
 .error-message {
-  background-color: #ffeeee;
-  color: #cc0000;
+  background-color: rgba(251, 86, 7, 0.1);
+  color: var(--accent-danger, #fb5607);
   padding: 0.8rem;
   border-radius: 4px;
   margin-bottom: 1.5rem;
+  border: 1px solid rgba(251, 86, 7, 0.3);
 }
 
 .loading-container {
@@ -248,23 +315,27 @@ h1 {
 .spinner {
   width: 3rem;
   height: 3rem;
-  border: 3px solid rgba(0, 102, 204, 0.3);
+  border: 3px solid rgba(162, 162, 162, 0.3);
   border-radius: 50%;
-  border-top-color: #0066cc;
+  border-top-color: var(--accent-primary, #3a86ff);
   animation: spin 1s ease-in-out infinite;
   margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
-  background-color: #f9f9f9;
+  background-color: var(--card-bg, #2a2a2a);
   border-radius: 8px;
 }
 
 .empty-state p {
   margin-bottom: 1.5rem;
-  color: #666;
+  color: var(--text-secondary, #b0b0b0);
   font-size: 1.2rem;
 }
 
@@ -278,32 +349,32 @@ h1 {
 
 .pagination-button {
   padding: 0.5rem 1rem;
-  background-color: #f1f1f1;
-  border: 1px solid #ddd;
+  background-color: var(--button-secondary-bg, #2a2a2a);
+  border: 1px solid var(--border-color, #333333);
   border-radius: 4px;
   cursor: pointer;
+  color: var(--text-primary, #e0e0e0);
 }
 
 .pagination-button:hover:not(:disabled) {
-  background-color: #e1e1e1;
+  background-color: var(--bg-tertiary, #333333);
 }
 
 .pagination-button:disabled {
-  background-color: #f9f9f9;
-  color: #ccc;
+  background-color: var(--bg-tertiary, #2a2a2a);
+  color: var(--text-muted, #888888);
   cursor: not-allowed;
 }
 
 .page-info {
-  color: #666;
+  color: var(--text-secondary, #b0b0b0);
 }
 
 .search-results-info {
-  color: #666;
+  color: var(--text-secondary, #b0b0b0);
   font-size: 0.9rem;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* Import dark mode for video search filter component */
+@import url('./VideoSearchFilter.vue');
 </style>

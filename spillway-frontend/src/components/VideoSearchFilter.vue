@@ -120,9 +120,9 @@ export default {
 .video-search-filter {
   margin-bottom: 1.5rem;
   padding: 1rem;
-  background-color: #f9f9f9;
+  background-color: var(--card-bg, #1e1e1e);
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 0, 0, 0.1));
 }
 
 .search-bar {
@@ -133,13 +133,15 @@ export default {
 .search-input {
   flex: 1;
   padding: 0.5rem 1rem;
-  border: 1px solid #ddd;
+  border: 1px solid var(--input-border, #444444);
   border-radius: 4px 0 0 4px;
   font-size: 1rem;
+  background-color: var(--input-bg, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
 }
 
 .search-button {
-  background-color: #0066cc;
+  background-color: var(--accent-primary, #3a86ff);
   color: white;
   border: none;
   padding: 0 1rem;
@@ -148,13 +150,13 @@ export default {
 }
 
 .search-button:hover {
-  background-color: #0055aa;
+  background-color: var(--button-primary-hover, #2a76ef);
 }
 
 .filters {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #ddd;
+  border-top: 1px solid var(--border-color, #333333);
 }
 
 .filter-group {
@@ -166,13 +168,16 @@ export default {
 .filter-group label {
   margin-right: 0.5rem;
   min-width: 60px;
+  color: var(--text-secondary, #b0b0b0);
 }
 
 .filter-group select {
   padding: 0.3rem;
   margin-right: 0.5rem;
-  border: 1px solid #ddd;
+  border: 1px solid var(--input-border, #444444);
   border-radius: 4px;
+  background-color: var(--input-bg, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
 }
 
 .filter-actions {
@@ -190,26 +195,27 @@ export default {
 }
 
 .filter-button {
-  background-color: #0066cc;
+  background-color: var(--accent-primary, #3a86ff);
   color: white;
 }
 
 .filter-button:hover {
-  background-color: #0055aa;
+  background-color: var(--button-primary-hover, #2a76ef);
 }
 
 .reset-button {
-  background-color: #f1f1f1;
-  color: #333;
+  background-color: var(--button-secondary-bg, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
+  border: 1px solid var(--border-color, #333333);
 }
 
 .reset-button:hover {
-  background-color: #e1e1e1;
+  background-color: var(--bg-tertiary, #333333);
 }
 
 .toggle-filters {
   text-align: center;
-  color: #0066cc;
+  color: var(--accent-primary, #3a86ff);
   cursor: pointer;
   font-size: 0.9rem;
   margin-top: 1rem;
@@ -217,5 +223,17 @@ export default {
 
 .toggle-filters:hover {
   text-decoration: underline;
+}
+
+/* Make sure inputs and selects have the same styling in dark mode */
+input, select {
+  background-color: var(--input-bg, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
+  border-color: var(--input-border, #444444);
+}
+
+:deep(option) {
+  background-color: var(--input-bg, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
 }
 </style>
