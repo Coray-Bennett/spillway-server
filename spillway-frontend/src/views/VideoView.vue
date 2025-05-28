@@ -117,6 +117,7 @@ const error = ref('')
 const videoMetadata = ref(null)
 const showEditModal = ref(false)
 const authStore = useAuthStore()
+const videoStore = useVideoStore()
 
 const isOwner = computed(() => {
   if (!authStore.isAuthenticated || !videoMetadata.value) return false
@@ -151,11 +152,7 @@ onUnmounted(() => {
 
 async function fetchVideoMetadata() {
   try {
-    const response = await fetch(`http://localhost:8081/video/${videoId.value}`)
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    const data = await response.json()
+    const data = await videoStore.getVideo(videoId.value)
     videoMetadata.value = data
     
     // Update playlist URL from metadata if available
@@ -190,7 +187,10 @@ function loadVideo() {
     }
     
     hls = new Hls({
-      debug: true
+      debug: true,
+      xhrSetup: xhr => {
+        xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`)
+      }
     })
     
     hls.loadSource(playlistUrl.value)

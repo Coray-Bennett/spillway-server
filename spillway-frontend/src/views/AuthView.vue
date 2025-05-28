@@ -1,18 +1,18 @@
 <template>
     <div class="auth-view">
-      <div class="container">
+      <!-- <div class="container">
         <div class="auth-container">
-          <div class="auth-card card">
-            <div class="auth-header">
+          <div class="auth-card card"> -->
+            <!-- <div class="auth-header">
               <h2 class="auth-title">{{ isLogin ? 'Sign In' : 'Create Account' }}</h2>
               <p class="auth-subtitle">
                 {{ isLogin ? 'Welcome back to Spillway' : 'Join Spillway today' }}
               </p>
-            </div>
+            </div> -->
             
             <router-view />
             
-            <div class="auth-footer">
+            <!-- <div class="auth-footer">
               <p class="switch-text">
                 {{ isLogin ? "Don't have an account?" : "Already have an account?" }}
                 <router-link 
@@ -22,10 +22,10 @@
                   {{ isLogin ? 'Sign up' : 'Sign in' }}
                 </router-link>
               </p>
-            </div>
-          </div>
+            </div> -->
+          <!-- </div>
         </div>
-      </div>
+      </div> -->
     </div>
   </template>
   

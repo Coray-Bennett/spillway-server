@@ -44,7 +44,7 @@
       </div>
       
       <div class="additional-actions">
-        <router-link to="/register" class="register-link">
+        <router-link to="/auth/register" class="register-link">
           Don't have an account? Register
         </router-link>
         <router-link to="/forgot-password" class="forgot-password-link">
@@ -187,7 +187,7 @@ export default {
   max-width: 400px;
   margin: 2rem auto;
   padding: 2rem;
-  background-color: #fff;
+  background-color: #222;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
@@ -214,7 +214,7 @@ h2 {
 label {
   display: block;
   margin-bottom: 0.5rem;
-  color: #333;
+  color: --primary-text;
   font-weight: 500;
 }
 

@@ -30,9 +30,6 @@
       </div>
       
       <div class="video-stats" v-if="!isProcessing && !isFailed">
-        <span v-if="video.views !== undefined" class="video-views">
-          {{ formatViews(video.views) }} views
-        </span>
         <span v-if="video.createdAt" class="video-date">
           {{ formatDate(video.createdAt) }}
         </span>
@@ -79,21 +76,14 @@ export default {
       return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     },
     
-    formatViews(views) {
-      if (views === undefined || views === null) return '0'
+    formatDate(dateArr) {
+      if (!dateArr) return ''
       
-      if (views >= 1000000) {
-        return (views / 1000000).toFixed(1) + 'M'
-      } else if (views >= 1000) {
-        return (views / 1000).toFixed(1) + 'K'
-      }
-      
-      return views.toString()
-    },
-    
-    formatDate(dateString) {
-      if (!dateString) return ''
-      
+      let year, month, day, etc
+      [year, month, day, ...etc] = dateArr
+
+      const dateString = `${year}/${month}/${day}`
+
       const date = new Date(dateString)
       return date.toLocaleDateString('en-US', {
         year: 'numeric',
@@ -211,7 +201,7 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #333;
+  color: --primary-text;
 }
 
 .video-meta {
@@ -223,22 +213,22 @@ export default {
 
 .video-genre {
   font-size: 0.75rem;
-  color: #666;
-  background-color: #f1f1f1;
+  color: --secondary-text;
+  background-color: --secondary-bg;
   padding: 2px 6px;
   border-radius: 3px;
 }
 
 .video-uploader {
   font-size: 0.75rem;
-  color: #666;
+  color: --secondary-text;
 }
 
 .video-stats {
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: #888;
+  color: --secondary-text;
 }
 
 @keyframes spin {
