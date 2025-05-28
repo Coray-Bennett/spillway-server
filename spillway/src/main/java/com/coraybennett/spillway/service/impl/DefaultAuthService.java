@@ -103,34 +103,28 @@ public class DefaultAuthService implements AuthService {
     @Override
     @Transactional
     public RegistrationResponse register(String username, String password, String email) throws Exception {
-        // Validate username
         UsernameValidator.ValidationResult usernameResult = usernameValidator.validate(username);
         if (!usernameResult.isValid()) {
             throw new IllegalArgumentException(usernameResult.getErrorMessage());
         }
         
-        // Check if username already exists
         if (userRepository.existsByUsername(username)) {
             throw new IllegalArgumentException("Username already exists");
         }
         
-        // Validate email
         if (email == null || !email.matches("^[A-Za-z0-9+_.-]+@(.+)$")) {
             throw new IllegalArgumentException("Invalid email address");
         }
         
-        // Check if email already exists
         if (userRepository.findByEmail(email).isPresent()) {
             throw new IllegalArgumentException("Email already registered");
         }
-        
-        // Validate password
+
         PasswordValidator.ValidationResult passwordResult = passwordValidator.validate(password, username);
         if (!passwordResult.isValid()) {
             throw new IllegalArgumentException(passwordResult.getErrorMessage());
         }
-        
-        // Create new user
+
         User user = new User();
         user.setUsername(username);
         user.setEmail(email);
@@ -140,7 +134,6 @@ public class DefaultAuthService implements AuthService {
         boolean requiresEmailConfirmation = !"dev".equals(activeProfile);
         
         if (requiresEmailConfirmation) {
-            // Generate confirmation token
             String confirmationToken = UUID.randomUUID().toString();
             user.setConfirmationToken(confirmationToken);
             user.setConfirmationTokenExpiry(LocalDateTime.now().plusHours(confirmationTokenExpiryHours));
@@ -156,7 +149,6 @@ public class DefaultAuthService implements AuthService {
         User savedUser = userRepository.save(user);
         
         if (requiresEmailConfirmation) {
-            // Send confirmation email
             emailService.sendConfirmationEmail(email, username, savedUser.getConfirmationToken());
             
             return new RegistrationResponse(
@@ -185,13 +177,11 @@ public class DefaultAuthService implements AuthService {
             return false;
         }
         
-        // Check if token is expired
         if (user.getConfirmationTokenExpiry() != null && 
             LocalDateTime.now().isAfter(user.getConfirmationTokenExpiry())) {
             return false;
         }
-        
-        // Confirm the email
+
         user.setEmailConfirmed(true);
         user.setEnabled(true);
         user.setConfirmationToken(null);
@@ -210,13 +200,11 @@ public class DefaultAuthService implements AuthService {
             return false;
         }
         
-        // Generate new token
         String newToken = UUID.randomUUID().toString();
         user.setConfirmationToken(newToken);
         user.setConfirmationTokenExpiry(LocalDateTime.now().plusHours(confirmationTokenExpiryHours));
         userRepository.save(user);
         
-        // Send email
         return emailService.sendConfirmationEmail(email, user.getUsername(), newToken);
     }
 

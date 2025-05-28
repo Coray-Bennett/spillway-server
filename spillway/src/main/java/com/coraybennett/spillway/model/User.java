@@ -65,8 +65,7 @@ public class User {
         this.password = password;
         this.email = email;
     }
-
-    // Getters and setters
+    
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
     public String getUsername() { return username; }

@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import com.coraybennett.spillway.service.api.EmailService;
 
 @Service
-@Profile("dev") // Only active in dev profile
+@Profile("dev")
 public class MockEmailService implements EmailService {
     
     private static final Logger logger = LoggerFactory.getLogger(MockEmailService.class);

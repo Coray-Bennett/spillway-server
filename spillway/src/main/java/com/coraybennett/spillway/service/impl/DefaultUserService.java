@@ -52,7 +52,6 @@ public class DefaultUserService implements UserService {
 
     @Override
     public User updateUser(User user) {
-        // Ensure the user exists before updating
         if (!userRepository.existsById(user.getId())) {
             throw new IllegalArgumentException("Cannot update non-existent user: " + user.getId());
         }

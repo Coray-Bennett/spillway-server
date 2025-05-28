@@ -63,7 +63,6 @@ public class DefaultVideoService implements VideoService {
         video.setTitle(metadata.getTitle());
         video.setType(metadata.getType());
         
-        // Set a default length that will be updated after upload
         video.setLength(metadata.getLength() != null ? metadata.getLength() : 0);
         
         video.setGenre(metadata.getGenre());
@@ -96,13 +95,11 @@ public class DefaultVideoService implements VideoService {
                 .orElseThrow(() -> new VideoConversionException("Video not found: " + videoId));
         
         try {
-            // Store the temporary file
             Path tempFilePath = storageService.store(
                     videoFile, 
                     tempUploadDir
             );
             
-            // Update video duration based on the actual file
             int duration = videoConversionService.getVideoDuration(tempFilePath);
             if (duration > 0) {
                 video.setLength(duration);
@@ -110,7 +107,6 @@ public class DefaultVideoService implements VideoService {
                 logger.info("Updated video duration to {} seconds for video {}", duration, videoId);
             }
             
-            // Start the conversion process
             videoConversionService.convertToHls(tempFilePath, video);
             
         } catch (Exception e) {

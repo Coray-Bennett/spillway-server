@@ -32,7 +32,7 @@ import com.coraybennett.spillway.service.api.StorageService;
 public class FileSystemStorageService implements StorageService {
     private static final Logger logger = LoggerFactory.getLogger(FileSystemStorageService.class);
     private static final Pattern FILENAME_SANITIZER = Pattern.compile("[^a-zA-Z0-9.-]");
-    private static final int BUFFER_SIZE = 64 * 1024; // 64 KB buffer size for NIO operations
+    private static final int BUFFER_SIZE = 64 * 1024;
     
     // Cache for directory existence checks to avoid repeated filesystem operations
     private final ConcurrentHashMap<String, Boolean> directoryExistsCache = new ConcurrentHashMap<>();
@@ -68,7 +68,6 @@ public class FileSystemStorageService implements StorageService {
         Path destinationFile = Paths.get(destinationPath, filename);
         
         if (enableNioTransfer) {
-            // Use NIO for more efficient file copying
             try (ReadableByteChannel inChannel = Channels.newChannel(file.getInputStream());
                  FileChannel outChannel = FileChannel.open(destinationFile, 
                      StandardOpenOption.CREATE, 
@@ -86,7 +85,6 @@ public class FileSystemStorageService implements StorageService {
                 logger.info("Stored file: {} in {} using NIO", filename, destinationPath);
             }
         } else {
-            // Fallback to standard approach
             try (InputStream inputStream = file.getInputStream()) {
                 Files.copy(inputStream, destinationFile, StandardCopyOption.REPLACE_EXISTING);
                 logger.info("Stored file: {} in {}", filename, destinationPath);
@@ -104,7 +102,6 @@ public class FileSystemStorageService implements StorageService {
         Path destinationFile = Paths.get(destinationPath, filename);
         
         if (enableNioTransfer) {
-            // Use NIO for more efficient file copying
             try (ReadableByteChannel inChannel = Channels.newChannel(inputStream);
                  FileChannel outChannel = FileChannel.open(destinationFile, 
                      StandardOpenOption.CREATE, 
@@ -147,9 +144,8 @@ public class FileSystemStorageService implements StorageService {
     public boolean delete(Path path) {
         try {
             if (Files.isDirectory(path)) {
-                // Use parallel stream for faster directory deletion
                 Files.walk(path)
-                    .sorted((a, b) -> -a.compareTo(b)) // Reverse order: delete children before parents
+                    .sorted((a, b) -> -a.compareTo(b))
                     .parallel()
                     .forEach(p -> {
                         try {
@@ -159,7 +155,6 @@ public class FileSystemStorageService implements StorageService {
                         }
                     });
                 
-                // Update directory cache
                 directoryExistsCache.remove(path.toString());
                 return true;
             } else {
@@ -177,14 +172,12 @@ public class FileSystemStorageService implements StorageService {
 
     @Override
     public boolean exists(Path path) {
-        // Check if it's a known directory first
         String pathStr = path.toString();
         Boolean exists = directoryExistsCache.get(pathStr);
         if (exists != null) {
             return exists;
         }
         
-        // Otherwise check filesystem
         return Files.exists(path);
     }
     
