@@ -12,42 +12,21 @@ const apiClient = axios.create({
   }
 })
 
-// Create a separate instance for search requests for debugging purposes
-// We'll later merge this back into the main apiClient
-const searchClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-})
-
 /**
  * Update all axios instances with auth token
  * @param {string|null} token - The JWT token or null to remove
  */
 export const updateAuthHeader = (token) => {
-  console.log("[API Service] Setting auth token:", token ? "token present" : "no token")
-  
   if (token) {
-    // Set token in localStorage for persistence
     localStorage.setItem('token', token)
-    
-    // Set the Authorization header in both clients
+
     apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`
-    searchClient.defaults.headers.common['Authorization'] = `Bearer ${token}`
-    
-    // Add to global axios defaults as well
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
-    
-    console.log("[API Service] Auth headers set for all clients")
   } else {
     // Clear token and headers
     localStorage.removeItem('token')
     delete apiClient.defaults.headers.common['Authorization']
-    delete searchClient.defaults.headers.common['Authorization']
     delete axios.defaults.headers.common['Authorization']
-    
-    console.log("[API Service] Auth headers cleared for all clients")
   }
 }
 
@@ -55,7 +34,6 @@ export const updateAuthHeader = (token) => {
  * Setup interceptors for debugging and error handling
  */
 const setupInterceptors = () => {
-  // Request interceptor for apiClient
   apiClient.interceptors.request.use(
     config => {
       console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`, 
@@ -67,61 +45,10 @@ const setupInterceptors = () => {
       return Promise.reject(error)
     }
   )
-
-  // Request interceptor for searchClient
-  searchClient.interceptors.request.use(
-    config => {
-      console.log(`[SEARCH Request] ${config.method.toUpperCase()} ${config.url}`, 
-        config.headers.Authorization ? "With Auth" : "Without Auth")
-      
-      // Force add token from localStorage if not present in headers
-      if (!config.headers.Authorization) {
-        const token = localStorage.getItem('token')
-        if (token) {
-          console.log("[SEARCH] Adding missing Authorization header from localStorage")
-          config.headers.Authorization = `Bearer ${token}`
-        }
-      }
-      
-      return config
-    },
-    error => {
-      console.error("[SEARCH Request Error]", error)
-      return Promise.reject(error)
-    }
-  )
-
-  // Response interceptors for debugging
-  const commonResponseInterceptor = [
-    response => {
-      console.log(`[API Response] ${response.status} from ${response.config.url}`)
-      return response
-    },
-    error => {
-      if (error.response) {
-        console.error(`[API Error] ${error.response.status} from ${error.config.url}`, 
-          error.response.data)
-          
-        // Handle 401 errors
-        if (error.response.status === 401) {
-          console.warn(`[API Unauthorized] from ${error.config.url}`)
-          // We could trigger a logout or token refresh here
-        }
-      } else {
-        console.error('[API Error] Network or other error', error)
-      }
-      return Promise.reject(error)
-    }
-  ]
-  
-  apiClient.interceptors.response.use(...commonResponseInterceptor)
-  searchClient.interceptors.response.use(...commonResponseInterceptor)
 }
 
-// Initialize interceptors
 setupInterceptors()
 
-// Initialize with token from localStorage if available
 const token = localStorage.getItem('token')
 if (token) {
   console.log("[API Service] Found token in localStorage, initializing clients")
@@ -158,13 +85,13 @@ export const videoAPI = {
  * Search API service - using dedicated search client to ensure auth headers
  */
 export const searchAPI = {
-  searchVideos: (params) => searchClient.post('/search/videos', params),
-  searchPlaylists: (params) => searchClient.post('/search/playlists', params),
-  getGenres: () => searchClient.get('/search/genres'),
-  getRecentVideos: (limit = 10) => searchClient.get(`/search/videos/recent?limit=${limit}`),
-  getPopularPlaylists: (limit = 10) => searchClient.get(`/search/playlists/popular?limit=${limit}`),
+  searchVideos: (params) => apiClient.post('/search/videos', params),
+  searchPlaylists: (params) => apiClient.post('/search/playlists', params),
+  getGenres: () => apiClient.get('/search/genres'),
+  getRecentVideos: (limit = 10) => apiClient.get(`/search/videos/recent?limit=${limit}`),
+  getPopularPlaylists: (limit = 10) => apiClient.get(`/search/playlists/popular?limit=${limit}`),
   quickSearch: (query, page = 0, size = 20) => 
-    searchClient.get(`/search/videos/quick?q=${encodeURIComponent(query)}&page=${page}&size=${size}`)
+    apiClient.get(`/search/videos/quick?q=${encodeURIComponent(query)}&page=${page}&size=${size}`)
 }
 
 /**

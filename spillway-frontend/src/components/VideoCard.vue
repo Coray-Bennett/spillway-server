@@ -29,18 +29,6 @@
       <div v-else-if="video.duration" class="duration-badge">
         {{ formatDuration(video.duration) }}
       </div>
-      
-      <div v-if="showActions && !isProcessing && !isFailed" class="thumbnail-actions">
-        <AppButton 
-          icon="play"
-          variant="primary"
-          size="small"
-          class="play-btn"
-          @click.stop="$emit('play', video)"
-        >
-          Play
-        </AppButton>
-      </div>
     </div>
     
     <div class="video-info">
@@ -298,6 +286,7 @@ function formatViewCount(views) {
   font-size: 0.95rem;
   margin: 0 0 8px;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -307,6 +296,7 @@ function formatViewCount(views) {
 }
 
 .video-card--compact .video-title {
+  line-clamp: 1;
   -webkit-line-clamp: 1;
   margin-bottom: 6px;
 }

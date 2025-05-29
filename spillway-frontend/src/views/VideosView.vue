@@ -58,37 +58,11 @@
       @select="selectVideo"
       @play="playVideo"
     >
-      <template #video-actions="{ video }">
-        <AppButton 
-          @click.stop="editVideo(video)" 
-          variant="secondary"
-          size="small"
-          icon="edit"
-        >
-          Edit
-        </AppButton>
-      </template>
       
       <template #empty-actions>
         <AppButton to="/upload" variant="primary" icon="upload">
           Upload your first video
         </AppButton>
-      </template>
-    </VideoGallery>
-    
-    <!-- Recent videos section -->
-    <VideoGallery
-      v-if="recentVideosLoading || recentVideos.length > 0"
-      :videos="recentVideos"
-      :loading="recentVideosLoading"
-      :error="recentVideosError"
-      title="Recent Videos"
-      layout="grid"
-      @select="selectVideo"
-      @play="playVideo"
-    >
-      <template #empty-description>
-        Check back soon for new videos!
       </template>
     </VideoGallery>
     
@@ -210,10 +184,6 @@ function selectVideo(video) {
 
 function playVideo(video) {
   router.push(`/video/${video.id}?autoplay=1`)
-}
-
-function editVideo(video) {
-  router.push(`/video/${video.id}/edit`)
 }
 
 async function changePage(page) {
