@@ -1,7 +1,12 @@
 <template>
   <div 
     class="video-card" 
-    :class="{ 'processing': isProcessing, 'failed': isFailed }"
+    :class="{ 
+      'processing': isProcessing, 
+      'failed': isFailed,
+      'video-card--with-actions': showActions,
+      'video-card--compact': compact
+    }"
     @click="$emit('select', video)"
   >
     <div class="video-thumbnail">
@@ -21,24 +26,61 @@
         <span>Processing Failed</span>
       </div>
       
-      <div v-else class="duration-badge">
+      <div v-else-if="video.duration" class="duration-badge">
         {{ formatDuration(video.duration) }}
+      </div>
+      
+      <div v-if="showActions && !isProcessing && !isFailed" class="thumbnail-actions">
+        <AppButton 
+          icon="play"
+          variant="primary"
+          size="small"
+          class="play-btn"
+          @click.stop="$emit('play', video)"
+        >
+          Play
+        </AppButton>
       </div>
     </div>
     
     <div class="video-info">
-      <h3 class="video-title" :title="video.title">{{ video.title }}</h3>
+      <h3 class="video-title" :title="video.title">
+        {{ video.title }}
+      </h3>
       
       <div class="video-meta">
-        <span v-if="video.genre" class="video-genre">{{ video.genre }}</span>
-        <span class="video-uploader">{{ video.uploadedBy?.username || 'Unknown' }}</span>
+        <div class="video-meta-item" v-if="video.genre">
+          <BaseIcon name="tag" :size="14" />
+          <span class="video-genre">{{ video.genre }}</span>
+        </div>
+        
+        <div class="video-meta-item" v-if="showUploader && video.uploadedBy">
+          <BaseIcon name="user" :size="14" />
+          <span class="video-uploader">{{ video.uploadedBy.username || 'Unknown' }}</span>
+        </div>
+        
+        <div class="video-meta-item" v-if="video.createdAt && !isProcessing && !isFailed">
+          <BaseIcon name="calendar" :size="14" />
+          <span class="video-date">{{ formatDate(video.createdAt) }}</span>
+        </div>
+        
+        <div class="video-meta-item" v-if="video.views !== undefined">
+          <BaseIcon name="eye" :size="14" />
+          <span class="video-views">{{ formatViewCount(video.views) }}</span>
+        </div>
       </div>
       
-      <div class="video-stats" v-if="!isProcessing && !isFailed">
-        <span v-if="video.createdAt" class="video-date">
-          {{ formatDate(video.createdAt) }}
-        </span>
+      <p v-if="showDescription && video.description" class="video-description">
+        {{ truncateDescription(video.description) }}
+      </p>
+      
+      <div v-if="showActions && !compact" class="video-actions">
+        <slot name="actions"></slot>
       </div>
+    </div>
+    
+    <div v-if="showActions && compact" class="compact-actions">
+      <slot name="actions"></slot>
     </div>
   </div>
 </template>
@@ -50,21 +92,58 @@ import { formatDate } from '@/utils/date'
 import { formatDuration } from '@/utils/metadata'
 import BaseIcon from './icons/BaseIcon.vue'
 import LoadingSpinner from './common/LoadingSpinner.vue'
+import AppButton from './common/AppButton.vue'
 
 const props = defineProps({
   video: {
     type: Object,
     required: true
+  },
+  showActions: {
+    type: Boolean,
+    default: false
+  },
+  showDescription: {
+    type: Boolean,
+    default: false
+  },
+  showUploader: {
+    type: Boolean,
+    default: true
+  },
+  descriptionLength: {
+    type: Number,
+    default: 120
+  },
+  compact: {
+    type: Boolean,
+    default: false
   }
 })
 
-defineEmits(['select'])
+defineEmits(['select', 'play'])
 
 const videoStore = useVideoStore()
 
 // Computed properties for video status
 const isProcessing = computed(() => videoStore.isVideoProcessing(props.video))
 const isFailed = computed(() => videoStore.isVideoFailed(props.video))
+
+// Helper methods
+function truncateDescription(text) {
+  if (!text) return ''
+  return text.length > props.descriptionLength 
+    ? text.slice(0, props.descriptionLength) + '...' 
+    : text
+}
+
+function formatViewCount(views) {
+  if (views === undefined || views === null) return '0 views'
+  
+  if (views < 1000) return `${views} view${views === 1 ? '' : 's'}`
+  if (views < 1000000) return `${(views / 1000).toFixed(1)}K views`
+  return `${(views / 1000000).toFixed(1)}M views`
+}
 </script>
 
 <style scoped>
@@ -75,11 +154,30 @@ const isFailed = computed(() => videoStore.isVideoFailed(props.video))
   transition: transform 0.2s, box-shadow 0.2s;
   background-color: var(--card-bg, #2a2a2a);
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
 }
 
 .video-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.video-card--compact {
+  flex-direction: row;
+  align-items: center;
+}
+
+.video-card--compact .video-thumbnail {
+  width: 180px;
+  height: 100px;
+  flex-shrink: 0;
+}
+
+.video-card--compact .video-info {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .video-card.processing {
@@ -96,6 +194,10 @@ const isFailed = computed(() => videoStore.isVideoFailed(props.video))
   background-color: var(--bg-secondary, #222);
 }
 
+.video-card--compact .video-thumbnail {
+  padding-top: 0;
+}
+
 .video-thumbnail img {
   position: absolute;
   top: 0;
@@ -103,6 +205,10 @@ const isFailed = computed(() => videoStore.isVideoFailed(props.video))
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.video-card--compact .video-thumbnail img {
+  position: relative;
 }
 
 .placeholder-thumbnail {
@@ -118,6 +224,11 @@ const isFailed = computed(() => videoStore.isVideoFailed(props.video))
   color: var(--text-muted, #999);
 }
 
+.video-card--compact .placeholder-thumbnail {
+  position: relative;
+  height: 100px;
+}
+
 .duration-badge {
   position: absolute;
   bottom: 8px;
@@ -128,6 +239,33 @@ const isFailed = computed(() => videoStore.isVideoFailed(props.video))
   border-radius: 3px;
   font-size: 0.75rem;
   font-weight: bold;
+}
+
+.thumbnail-actions {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.video-card:hover .thumbnail-actions {
+  opacity: 1;
+}
+
+.play-btn {
+  transform: scale(0.9);
+  transition: transform 0.2s;
+}
+
+.video-card:hover .play-btn {
+  transform: scale(1);
 }
 
 .processing-overlay,
@@ -151,41 +289,78 @@ const isFailed = computed(() => videoStore.isVideoFailed(props.video))
 
 .video-info {
   padding: 12px;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
 }
 
 .video-title {
   font-size: 0.95rem;
-  margin: 0 0 6px;
-  white-space: nowrap;
+  margin: 0 0 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-primary, #e0e0e0);
+  line-height: 1.3;
+}
+
+.video-card--compact .video-title {
+  -webkit-line-clamp: 1;
+  margin-bottom: 6px;
 }
 
 .video-meta {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.video-genre {
-  font-size: 0.75rem;
-  color: var(--text-secondary, #b0b0b0);
-  background-color: var(--bg-tertiary, #333);
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
-.video-uploader {
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
   font-size: 0.75rem;
   color: var(--text-secondary, #b0b0b0);
 }
 
-.video-stats {
+.video-meta-item {
   display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
+  align-items: center;
+  gap: 4px;
+}
+
+.video-description {
+  font-size: 0.85rem;
   color: var(--text-secondary, #b0b0b0);
+  line-height: 1.4;
+  margin: 0 0 12px;
+}
+
+.video-actions,
+.compact-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.video-card--with-actions:hover {
+  background-color: var(--card-hover-bg, #323232);
+}
+
+@media (max-width: 640px) {
+  .video-card--compact {
+    flex-direction: column;
+  }
+  
+  .video-card--compact .video-thumbnail {
+    width: 100%;
+    padding-top: 56.25%;
+  }
+  
+  .video-card--compact .video-thumbnail img {
+    position: absolute;
+  }
+  
+  .video-card--compact .placeholder-thumbnail {
+    position: absolute;
+    height: 100%;
+  }
 }
 </style>

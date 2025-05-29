@@ -13,7 +13,7 @@ export const useAuthStore = defineStore('auth', {
   }),
   
   getters: {
-    isAuthenticated: (state) => !!state.token,
+    isAuthenticated: (state) => !!state.token && !state.isTokenExpired,
     currentUsername: (state) => state.user?.username || null,
     userId: (state) => {
       if (!state.token) return null
@@ -133,12 +133,16 @@ export const useAuthStore = defineStore('auth', {
       this.user = null
       localStorage.removeItem('token')
       localStorage.removeItem('username')
+      authAPI.setAuthToken(null)
     },
     
     initializeAuth() {
       if (this.token) {
         if (!this.isTokenExpired) {
-          // Restore username from localStorage and decode token
+          // Update API client with token
+          authAPI.setAuthToken(this.token)
+          
+          // Restore user info from localStorage and token
           const username = localStorage.getItem('username')
           if (username) {
             this.setUserFromToken(this.token, username)
@@ -154,6 +158,7 @@ export const useAuthStore = defineStore('auth', {
     setToken(token) {
       this.token = token
       localStorage.setItem('token', token)
+      authAPI.setAuthToken(token)
     },
     
     setUserFromToken(token, username) {
@@ -173,7 +178,19 @@ export const useAuthStore = defineStore('auth', {
     },
     
     handleError(error, defaultMessage) {
-      this.error = error.response?.data || defaultMessage
+      console.error(defaultMessage, error)
+      if (error.response && error.response.data) {
+        // Handle structured error response
+        if (typeof error.response.data === 'object' && error.response.data.message) {
+          this.error = error.response.data.message
+        } else {
+          this.error = error.response.data
+        }
+      } else if (error.message) {
+        this.error = error.message
+      } else {
+        this.error = defaultMessage
+      }
       return this.error
     }
   }

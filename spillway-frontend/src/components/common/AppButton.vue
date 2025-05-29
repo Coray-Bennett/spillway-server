@@ -14,7 +14,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, useSlots } from 'vue'
 import BaseIcon from '../icons/BaseIcon.vue'
 import LoadingSpinner from './LoadingSpinner.vue'
 
@@ -55,12 +55,15 @@ const props = defineProps({
   }
 })
 
+// Get access to slots
+const slots = useSlots()
+
 const buttonClasses = computed(() => ({
   [`app-button--${props.variant}`]: true,
   [`app-button--${props.size}`]: true,
   'app-button--loading': props.loading,
-  'app-button--icon-only': !!props.icon && !$slots.default,
-  'app-button--has-icon': !!props.icon && !!$slots.default
+  'app-button--icon-only': !!props.icon && !slots.default,
+  'app-button--has-icon': !!props.icon && !!slots.default
 }))
 </script>
 

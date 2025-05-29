@@ -18,117 +18,250 @@
       @search-performed="handleSearchPerformed" 
     />
     
-    <div class="videos-actions" v-if="hasSearchResults">
-      <div class="search-results-info">
-        Found {{ totalResults }} videos
-      </div>
-    </div>
-    
-    <ErrorMessage v-if="error" :message="error" dismissible @dismiss="error = null" />
-    
-    <LoadingSpinner v-if="isLoading" message="Loading videos..." />
-    
     <!-- Search results -->
-    <div v-else-if="hasSearchResults" class="videos-grid">
-      <VideoCard
-        v-for="video in searchResults"
-        :key="video.id"
-        :video="video"
-        @select="selectVideo"
-      />
-    </div>
+    <VideoGallery
+      v-if="hasSearchResults"
+      :videos="searchResults"
+      :loading="isLoading"
+      :error="error"
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      title="Search Results"
+      :count="totalResults"
+      layout="grid"
+      show-pagination
+      @select="selectVideo"
+      @page-change="changePage"
+    >
+      <template #actions>
+        <AppButton 
+          v-if="currentSearchQuery" 
+          @click="clearSearch" 
+          variant="text"
+          size="small"
+          icon="close"
+        >
+          Clear Search
+        </AppButton>
+      </template>
+    </VideoGallery>
     
-    <!-- User's videos -->
-    <div v-else-if="myVideos.length > 0" class="section">
-      <h2>Your Videos</h2>
-      <div class="videos-grid">
-        <VideoCard
-          v-for="video in myVideos"
-          :key="video.id"
-          :video="video"
-          @select="selectVideo"
-        />
-      </div>
-    </div>
-    
-    <!-- Recent videos -->
-    <div v-else-if="recentVideos.length > 0" class="section">
-      <h2>Recent Videos</h2>
-      <div class="videos-grid">
-        <VideoCard
-          v-for="video in recentVideos"
-          :key="video.id"
-          :video="video"
-          @select="selectVideo"
-        />
-      </div>
-    </div>
-    
-    <!-- Empty state -->
-    <div v-else class="empty-state">
-      <BaseIcon name="video" :size="48" class="empty-icon" />
-      <p>No videos found.</p>
-      <AppButton v-if="isAuthenticated" to="/upload" variant="primary">
-        Upload your first video
-      </AppButton>
-    </div>
-    
-    <!-- Pagination controls -->
-    <div v-if="totalPages > 1" class="pagination">
-      <AppButton 
-        @click="changePage(currentPage - 1)" 
-        :disabled="currentPage === 0"
-        variant="secondary"
-        size="small"
-        icon="chevron-left"
-      >
-        Previous
-      </AppButton>
+    <!-- User's videos section -->
+    <VideoGallery
+      v-else-if="myVideosLoading || myVideos.length > 0"
+      :videos="myVideos"
+      :loading="myVideosLoading"
+      :error="myVideosError"
+      title="Your Videos"
+      layout="grid"
+      show-video-actions
+      @select="selectVideo"
+      @play="playVideo"
+    >
+      <template #video-actions="{ video }">
+        <AppButton 
+          @click.stop="editVideo(video)" 
+          variant="secondary"
+          size="small"
+          icon="edit"
+        >
+          Edit
+        </AppButton>
+      </template>
       
-      <span class="page-info">
-        Page {{ currentPage + 1 }} of {{ totalPages }}
-      </span>
-      
-      <AppButton 
-        @click="changePage(currentPage + 1)" 
-        :disabled="currentPage >= totalPages - 1"
-        variant="secondary"
-        size="small"
-        icon="chevron-right"
-        icon-position="right"
-      >
-        Next
-      </AppButton>
-    </div>
+      <template #empty-actions>
+        <AppButton to="/upload" variant="primary" icon="upload">
+          Upload your first video
+        </AppButton>
+      </template>
+    </VideoGallery>
+    
+    <!-- Recent videos section -->
+    <VideoGallery
+      v-if="recentVideosLoading || recentVideos.length > 0"
+      :videos="recentVideos"
+      :loading="recentVideosLoading"
+      :error="recentVideosError"
+      title="Recent Videos"
+      layout="grid"
+      @select="selectVideo"
+      @play="playVideo"
+    >
+      <template #empty-description>
+        Check back soon for new videos!
+      </template>
+    </VideoGallery>
+    
+    <!-- If absolutely no videos found -->
+    <EmptyState 
+      v-if="!isLoading && !hasSearchResults && myVideos.length === 0 && recentVideos.length === 0"
+      icon="video"
+      title="No videos found"
+      description="There are currently no videos available to display."
+    >
+      <template #actions>
+        <AppButton v-if="isAuthenticated" to="/upload" variant="primary">
+          Upload your first video
+        </AppButton>
+      </template>
+    </EmptyState>
   </div>
 </template>
 
 <script setup>
-import VideoCard from '@/components/VideoCard.vue'
+import { ref, computed, onMounted } from 'vue'
+import VideoGallery from '@/components/VideoGallery.vue'
 import VideoSearchFilter from '@/components/VideoSearchFilter.vue'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
-import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import AppButton from '@/components/common/AppButton.vue'
-import BaseIcon from '@/components/icons/BaseIcon.vue'
-import useVideoList from '@/composables/useVideoList'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { useVideoStore } from '@/stores/video'
+import { useSearchStore } from '@/stores/search'
+import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
 
-// Use the video list composable to handle all the logic
-const {
-  currentSearchQuery,
-  myVideos,
-  error,
-  isLoading,
-  currentPage,
-  totalPages,
-  totalResults,
-  searchResults,
-  recentVideos,
-  isAuthenticated,
-  hasSearchResults,
-  handleSearchPerformed,
-  selectVideo,
-  changePage
-} = useVideoList()
+// Stores
+const videoStore = useVideoStore()
+const searchStore = useSearchStore()
+const authStore = useAuthStore()
+const router = useRouter()
+
+// State
+const currentSearchQuery = ref('')
+const error = ref(null)
+const isLoading = ref(false)
+
+// My videos section state
+const myVideos = ref([])
+const myVideosLoading = ref(false)
+const myVideosError = ref(null)
+
+// Recent videos section state
+const recentVideosLoading = ref(false)
+const recentVideosError = ref(null)
+
+// Computed properties
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+const searchResults = computed(() => searchStore.searchResults || [])
+const totalResults = computed(() => searchStore.totalResults)
+const totalPages = computed(() => searchStore.totalPages)
+const currentPage = computed(() => searchStore.currentPage)
+const recentVideos = computed(() => searchStore.recentVideos || [])
+const hasSearchResults = computed(() => searchResults.value.length > 0)
+
+// Methods
+async function loadMyVideos() {
+  if (!isAuthenticated.value) return
+  
+  myVideosLoading.value = true
+  myVideosError.value = null
+  
+  try {
+    const result = await videoStore.getMyVideos()
+    if (Array.isArray(result)) {
+      myVideos.value = result
+    } else if (result.error) {
+      myVideosError.value = result.error
+    }
+  } catch (err) {
+    myVideosError.value = err.message || 'Failed to load your videos'
+  } finally {
+    myVideosLoading.value = false
+  }
+}
+
+async function loadRecentVideos() {
+  recentVideosLoading.value = true
+  recentVideosError.value = null
+  
+  try {
+    await searchStore.getRecentVideos()
+  } catch (err) {
+    recentVideosError.value = err.message || 'Failed to load recent videos'
+  } finally {
+    recentVideosLoading.value = false
+  }
+}
+
+async function handleSearchPerformed(query) {
+  currentSearchQuery.value = query
+  await performSearch(query)
+}
+
+async function performSearch(query) {
+  isLoading.value = true
+  error.value = null
+  
+  try {
+    await searchStore.searchVideos({
+      query,
+      page: 0,
+      size: 20
+    })
+  } catch (err) {
+    error.value = err.message || 'Search failed'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+function selectVideo(video) {
+  router.push(`/video/${video.id}`)
+}
+
+function playVideo(video) {
+  router.push(`/video/${video.id}?autoplay=1`)
+}
+
+function editVideo(video) {
+  router.push(`/video/${video.id}/edit`)
+}
+
+async function changePage(page) {
+  isLoading.value = true
+  error.value = null
+  
+  try {
+    await searchStore.searchVideos({
+      query: currentSearchQuery.value,
+      page,
+      size: 20
+    })
+  } catch (err) {
+    error.value = err.message || 'Failed to change page'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+function clearSearch() {
+  currentSearchQuery.value = ''
+  searchStore.clearSearch()
+}
+
+// Lifecycle hooks
+onMounted(async () => {
+  // Ensure auth is initialized
+  if (!authStore.user && authStore.token) {
+    authStore.initializeAuth()
+  }
+  
+  // Check for search query from URL
+  const urlParams = new URLSearchParams(window.location.search)
+  const queryParam = urlParams.get('q')
+  
+  if (queryParam) {
+    currentSearchQuery.value = queryParam
+    await performSearch(queryParam)
+  } else {
+    // If authenticated, load user's videos
+    if (isAuthenticated.value) {
+      loadMyVideos()
+    }
+    
+    // Always load recent videos as fallback content
+    loadRecentVideos()
+  }
+})
 </script>
 
 <style scoped>
@@ -146,66 +279,9 @@ const {
   margin-bottom: 1.5rem;
 }
 
-h1, h2 {
+h1 {
   color: var(--text-primary, #e0e0e0);
   margin: 0;
-}
-
-.videos-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
-.videos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.section h2 {
-  margin: 1.5rem 0 1rem;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-  background-color: var(--card-bg, #2a2a2a);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-}
-
-.empty-icon {
-  opacity: 0.5;
-  margin-bottom: 0.5rem;
-}
-
-.empty-state p {
-  margin: 0 0 1rem;
-  color: var(--text-secondary, #b0b0b0);
-  font-size: 1.2rem;
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-top: 2rem;
-  gap: 1rem;
-}
-
-.page-info {
-  color: var(--text-secondary, #b0b0b0);
-}
-
-.search-results-info {
-  color: var(--text-secondary, #b0b0b0);
-  font-size: 0.9rem;
 }
 
 @media (max-width: 768px) {
@@ -213,10 +289,6 @@ h1, h2 {
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
-  }
-  
-  .videos-grid {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
 </style>
