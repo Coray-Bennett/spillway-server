@@ -1,12 +1,10 @@
 import { defineStore } from 'pinia'
-import axios from 'axios'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'
+import { videoAPI, playlistAPI } from '@/services/apiService'
 
 export const useVideoStore = defineStore('video', {
   state: () => ({
     videos: [],
-    myVideos: [], // Explicitly track user's videos
+    myVideos: [],
     playlists: [],
     currentVideo: null,
     currentPlaylist: null,
@@ -16,19 +14,51 @@ export const useVideoStore = defineStore('video', {
     videoStatusPolling: null
   }),
   
+  getters: {
+    // Helper methods as getters to simplify component template usage
+    isVideoProcessing: () => (video) => {
+      return video && (
+        video.conversionStatus === 'PENDING' || 
+        video.conversionStatus === 'IN_PROGRESS' ||
+        video.status === 'PENDING' ||
+        video.status === 'IN_PROGRESS'
+      )
+    },
+    
+    isVideoReady: () => (video) => {
+      return video && (
+        video.conversionStatus === 'COMPLETED' ||
+        video.status === 'COMPLETED'
+      )
+    },
+    
+    isVideoFailed: () => (video) => {
+      return video && (
+        video.conversionStatus === 'FAILED' ||
+        video.status === 'FAILED'
+      )
+    }
+  },
+  
   actions: {
+    // Error handling helper
+    handleError(error, defaultMessage) {
+      this.error = error.response?.data || defaultMessage
+      console.error(defaultMessage, error)
+      return { success: false, error: this.error }
+    },
+    
     // Video CRUD Operations
     async createVideo(metadata) {
       this.isLoading = true
       this.error = null
       
       try {
-        const response = await axios.post(`${API_BASE_URL}/upload/video/metadata`, metadata)
+        const response = await videoAPI.createMetadata(metadata)
         this.videos.unshift(response.data)
         return { success: true, video: response.data }
       } catch (error) {
-        this.error = error.response?.data || 'Failed to create video'
-        return { success: false, error: this.error }
+        return this.handleError(error, 'Failed to create video')
       } finally {
         this.isLoading = false
       }
@@ -43,19 +73,15 @@ export const useVideoStore = defineStore('video', {
       formData.append('file', file)
       
       try {
-        const response = await axios.post(`${API_BASE_URL}/upload/video/${videoId}/file`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          },
-          onUploadProgress: (progressEvent) => {
-            this.uploadProgress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          }
-        })
+        const onProgress = (progressEvent) => {
+          this.uploadProgress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        }
         
-        return { success: true, videoId: videoId }
+        await videoAPI.uploadFile(videoId, formData, onProgress)
+        
+        return { success: true, videoId }
       } catch (error) {
-        this.error = error.response?.data || 'Upload failed'
-        return { success: false, error: this.error }
+        return this.handleError(error, 'Upload failed')
       } finally {
         this.isLoading = false
       }
@@ -66,30 +92,35 @@ export const useVideoStore = defineStore('video', {
       this.error = null
       
       try {
-        const response = await axios.put(`${API_BASE_URL}/video/${videoId}`, updates)
+        const response = await videoAPI.updateVideo(videoId, updates)
         
-        // Update local state
-        const index = this.videos.findIndex(v => v.id === videoId)
-        if (index !== -1) {
-          this.videos[index] = response.data
-        }
-        
-        // Also update in myVideos if present
-        const myVideoIndex = this.myVideos.findIndex(v => v.id === videoId)
-        if (myVideoIndex !== -1) {
-          this.myVideos[myVideoIndex] = response.data
-        }
-        
-        if (this.currentVideo?.id === videoId) {
-          this.currentVideo = response.data
-        }
+        // Update local state in all places
+        this.updateVideoInArrays(videoId, response.data)
         
         return { success: true, video: response.data }
       } catch (error) {
-        this.error = error.response?.data || 'Failed to update video'
-        return { success: false, error: this.error }
+        return this.handleError(error, 'Failed to update video')
       } finally {
         this.isLoading = false
+      }
+    },
+
+    // Helper to update video in all arrays
+    updateVideoInArrays(videoId, updatedVideo) {
+      const arrays = [
+        { array: this.videos, setter: (arr, idx, video) => arr[idx] = video },
+        { array: this.myVideos, setter: (arr, idx, video) => arr[idx] = video }
+      ]
+      
+      for (const { array, setter } of arrays) {
+        const index = array.findIndex(v => v.id === videoId)
+        if (index !== -1) {
+          setter(array, index, updatedVideo)
+        }
+      }
+      
+      if (this.currentVideo?.id === videoId) {
+        this.currentVideo = updatedVideo
       }
     },
     
@@ -98,22 +129,17 @@ export const useVideoStore = defineStore('video', {
       this.error = null
       
       try {
-        console.log(`Fetching video metadata for ID: ${videoId}`)
-        const response = await axios.get(`${API_BASE_URL}/video/${videoId}`)
-        console.log('Video metadata response:', response.status)
+        const response = await videoAPI.getVideo(videoId)
         this.currentVideo = response.data
         return response.data
       } catch (error) {
-        console.error('Failed to fetch video metadata:', error)
-        
         // Handle specific 401/403 errors
         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
           this.error = 'Authentication required to access this video'
           return { success: false, error: this.error, unauthorized: true }
         }
         
-        this.error = error.response?.data || 'Failed to fetch video'
-        return { success: false, error: this.error }
+        return this.handleError(error, 'Failed to fetch video')
       } finally {
         this.isLoading = false
       }
@@ -121,7 +147,7 @@ export const useVideoStore = defineStore('video', {
     
     async getVideoStatus(videoId) {
       try {
-        const response = await axios.get(`${API_BASE_URL}/video/${videoId}/status`)
+        const response = await videoAPI.getVideoStatus(videoId)
         return response.data
       } catch (error) {
         console.error('Failed to get video status:', error)
@@ -134,57 +160,28 @@ export const useVideoStore = defineStore('video', {
       this.error = null
       
       try {
-        const response = await axios.get(`${API_BASE_URL}/video/my-videos`)
+        const response = await videoAPI.getUserVideos()
         this.myVideos = response.data
-        this.videos = [...this.myVideos] // Also update general videos list
         return this.myVideos
       } catch (error) {
         if (error.response?.status === 401) {
           this.error = 'Authentication required to view your videos'
           return { success: false, error: this.error, unauthorized: true }
         } else {
-          this.error = error.response?.data || 'Failed to fetch your videos'
-          return { success: false, error: this.error }
+          return this.handleError(error, 'Failed to fetch your videos')
         }
       } finally {
         this.isLoading = false
       }
     },
     
-    async getAllVideos() {
-      // Fetch all videos regardless of authentication
-      this.isLoading = true
-      this.error = null
-      
-      try {
-        // Use the search endpoint to get all videos
-        const response = await axios.post(`${API_BASE_URL}/search/videos`, {
-          query: '',
-          page: 0,
-          size: 50
-        })
-        
-        if (response.data && Array.isArray(response.data.content)) {
-          this.videos = response.data.content
-          return this.videos
-        }
-        return []
-      } catch (error) {
-        console.error('Failed to fetch all videos:', error)
-        this.error = error.response?.data || 'Failed to fetch videos'
-        return { success: false, error: this.error }
-      } finally {
-        this.isLoading = false
-      }
-    },
-    
-    // Playlist CRUD Operations
+    // Playlist operations
     async createPlaylist(playlistData) {
       this.isLoading = true
       this.error = null
       
       try {
-        const response = await axios.post(`${API_BASE_URL}/playlist`, playlistData)
+        const response = await playlistAPI.createPlaylist(playlistData)
         this.playlists.unshift(response.data)
         return { success: true, playlist: response.data }
       } catch (error) {
@@ -204,7 +201,7 @@ export const useVideoStore = defineStore('video', {
       this.error = null
       
       try {
-        const response = await axios.get(`${API_BASE_URL}/playlist/my-playlists`)
+        const response = await playlistAPI.getUserPlaylists()
         this.playlists = response.data
         return this.playlists
       } catch (error) {
@@ -219,29 +216,29 @@ export const useVideoStore = defineStore('video', {
       }
     },
     
-    // Playlist Video Management 
+    // Playlist Video Management
     async addVideoToPlaylist(playlistId, videoId, details = null) {
       this.isLoading = true
       this.error = null
       
       try {
-        const response = await axios.post(
-          `${API_BASE_URL}/playlist/${playlistId}/videos/${videoId}`,
-          details
-        )
+        await playlistAPI.addVideoToPlaylist(playlistId, videoId, details)
         
         // Update local video state if available
         const videoIndex = this.videos.findIndex(v => v.id === videoId)
         if (videoIndex !== -1) {
-          this.videos[videoIndex].playlistId = playlistId
+          const updatedVideo = { ...this.videos[videoIndex], playlistId }
+          
           if (details) {
             if (details.seasonNumber !== undefined) {
-              this.videos[videoIndex].seasonNumber = details.seasonNumber
+              updatedVideo.seasonNumber = details.seasonNumber
             }
             if (details.episodeNumber !== undefined) {
-              this.videos[videoIndex].episodeNumber = details.episodeNumber
+              updatedVideo.episodeNumber = details.episodeNumber
             }
           }
+          
+          this.updateVideoInArrays(videoId, updatedVideo)
         }
         
         return { success: true }
@@ -263,7 +260,6 @@ export const useVideoStore = defineStore('video', {
     async pollVideoConversionStatus(videoId, interval = 2000, maxAttempts = 60) {
       return new Promise((resolve, reject) => {
         let attempts = 0
-        let lastStatus = null
         
         const poll = async () => {
           try {
@@ -279,12 +275,12 @@ export const useVideoStore = defineStore('video', {
               return
             }
             
-            lastStatus = status.status || status.conversionStatus
+            const currentStatus = status.status || status.conversionStatus
             
-            if (lastStatus === 'COMPLETED') {
+            if (currentStatus === 'COMPLETED') {
               resolve(status)
               return
-            } else if (lastStatus === 'FAILED') {
+            } else if (currentStatus === 'FAILED') {
               reject(new Error('Video conversion failed'))
               return
             }
@@ -308,9 +304,7 @@ export const useVideoStore = defineStore('video', {
         }
         
         // Clear any existing polling
-        if (this.videoStatusPolling) {
-          clearTimeout(this.videoStatusPolling)
-        }
+        this.stopPolling()
         
         // Start polling
         poll()
@@ -322,30 +316,6 @@ export const useVideoStore = defineStore('video', {
         clearTimeout(this.videoStatusPolling)
         this.videoStatusPolling = null
       }
-    },
-    
-    // Helper methods
-    isVideoProcessing(video) {
-      return video && (
-        video.conversionStatus === 'PENDING' || 
-        video.conversionStatus === 'IN_PROGRESS' ||
-        video.status === 'PENDING' ||
-        video.status === 'IN_PROGRESS'
-      )
-    },
-    
-    isVideoReady(video) {
-      return video && (
-        video.conversionStatus === 'COMPLETED' ||
-        video.status === 'COMPLETED'
-      )
-    },
-    
-    isVideoFailed(video) {
-      return video && (
-        video.conversionStatus === 'FAILED' ||
-        video.status === 'FAILED'
-      )
     },
     
     clearError() {

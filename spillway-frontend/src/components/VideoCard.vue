@@ -1,18 +1,23 @@
 <template>
-  <div class="video-card" :class="{ 'processing': isProcessing, 'failed': isFailed }">
+  <div 
+    class="video-card" 
+    :class="{ 'processing': isProcessing, 'failed': isFailed }"
+    @click="$emit('select', video)"
+  >
     <div class="video-thumbnail">
       <img v-if="video.thumbnailUrl" :src="video.thumbnailUrl" :alt="video.title">
       <div v-else class="placeholder-thumbnail">
-        <i class="fas fa-video"></i>
+        <BaseIcon name="video" :size="24" />
       </div>
       
+      <!-- Status overlays -->
       <div v-if="isProcessing" class="processing-overlay">
-        <div class="spinner"></div>
+        <LoadingSpinner :size="1.5" color="white" />
         <span>Processing</span>
       </div>
       
       <div v-else-if="isFailed" class="failed-overlay">
-        <i class="fas fa-exclamation-circle"></i>
+        <BaseIcon name="error" :size="28" />
         <span>Processing Failed</span>
       </div>
       
@@ -38,41 +43,28 @@
   </div>
 </template>
 
-<script>
-import { useVideoStore } from '../stores/video'
+<script setup>
+import { computed } from 'vue'
+import { useVideoStore } from '@/stores/video'
 import { formatDate } from '@/utils/date'
 import { formatDuration } from '@/utils/metadata'
+import BaseIcon from './icons/BaseIcon.vue'
+import LoadingSpinner from './common/LoadingSpinner.vue'
 
-export default {
-  name: 'VideoCard',
-  
-  props: {
-    video: {
-      type: Object,
-      required: true
-    }
-  },
-  
-  setup() {
-    const videoStore = useVideoStore()
-    return { videoStore }
-  },
-  
-  computed: {
-    isProcessing() {
-      return this.videoStore.isVideoProcessing(this.video)
-    },
-    
-    isFailed() {
-      return this.videoStore.isVideoFailed(this.video)
-    }
-  },
-  
-  methods: {
-    formatDuration,
-    formatDate
+const props = defineProps({
+  video: {
+    type: Object,
+    required: true
   }
-}
+})
+
+defineEmits(['select'])
+
+const videoStore = useVideoStore()
+
+// Computed properties for video status
+const isProcessing = computed(() => videoStore.isVideoProcessing(props.video))
+const isFailed = computed(() => videoStore.isVideoFailed(props.video))
 </script>
 
 <style scoped>
@@ -81,7 +73,8 @@ export default {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   transition: transform 0.2s, box-shadow 0.2s;
-  background-color: white;
+  background-color: var(--card-bg, #2a2a2a);
+  cursor: pointer;
 }
 
 .video-card:hover {
@@ -100,7 +93,7 @@ export default {
 .video-thumbnail {
   position: relative;
   padding-top: 56.25%; /* 16:9 Aspect Ratio */
-  background-color: #f1f1f1;
+  background-color: var(--bg-secondary, #222);
 }
 
 .video-thumbnail img {
@@ -121,9 +114,8 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #eaeaea;
-  color: #aaa;
-  font-size: 2rem;
+  background-color: var(--bg-tertiary, #333);
+  color: var(--text-muted, #999);
 }
 
 .duration-badge {
@@ -138,7 +130,8 @@ export default {
   font-weight: bold;
 }
 
-.processing-overlay, .failed-overlay {
+.processing-overlay,
+.failed-overlay {
   position: absolute;
   top: 0;
   left: 0;
@@ -156,21 +149,6 @@ export default {
   background-color: rgba(200,0,0,0.5);
 }
 
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid rgba(255,255,255,0.3);
-  border-radius: 50%;
-  border-top-color: white;
-  animation: spin 1s ease-in-out infinite;
-  margin-bottom: 8px;
-}
-
-.fa-exclamation-circle {
-  font-size: 28px;
-  margin-bottom: 8px;
-}
-
 .video-info {
   padding: 12px;
 }
@@ -181,7 +159,7 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: --primary-text;
+  color: var(--text-primary, #e0e0e0);
 }
 
 .video-meta {
@@ -193,25 +171,21 @@ export default {
 
 .video-genre {
   font-size: 0.75rem;
-  color: --secondary-text;
-  background-color: --secondary-bg;
+  color: var(--text-secondary, #b0b0b0);
+  background-color: var(--bg-tertiary, #333);
   padding: 2px 6px;
   border-radius: 3px;
 }
 
 .video-uploader {
   font-size: 0.75rem;
-  color: --secondary-text;
+  color: var(--text-secondary, #b0b0b0);
 }
 
 .video-stats {
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: --secondary-text;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+  color: var(--text-secondary, #b0b0b0);
 }
 </style>
