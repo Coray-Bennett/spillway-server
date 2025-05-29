@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { jwtDecode } from 'jwt-decode'
-import { authAPI } from '@/services/apiService'
+import { authAPI, updateAuthHeader } from '@/services/apiService'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -31,6 +31,7 @@ export const useAuthStore = defineStore('auth', {
         const decoded = jwtDecode(state.token)
         return decoded.exp ? decoded.exp * 1000 < Date.now() : true
       } catch (e) {
+        console.error('Error decoding token:', e)
         return true
       }
     }
@@ -71,9 +72,13 @@ export const useAuthStore = defineStore('auth', {
           throw new Error('Invalid login response')
         }
         
+        // Set token in store AND update API client authorization headers
         this.setToken(jwt)
+        
+        // Extract user info from token
         this.setUserFromToken(jwt, credentials.username)
         
+        console.log('[Auth] Login successful, token set')
         return { success: true }
       } catch (error) {
         this.handleError(error, 'Login failed')
@@ -129,18 +134,25 @@ export const useAuthStore = defineStore('auth', {
     },
     
     logout() {
+      console.log('[Auth] Logging out, removing token')
       this.token = null
       this.user = null
       localStorage.removeItem('token')
       localStorage.removeItem('username')
-      authAPI.setAuthToken(null)
+      // Ensure API client also loses the token
+      updateAuthHeader(null)
     },
     
     initializeAuth() {
+      console.log('[Auth] Initializing auth with token:', this.token ? 'token present' : 'no token')
+      
       if (this.token) {
+        // Check if token is valid and not expired
         if (!this.isTokenExpired) {
-          // Update API client with token
-          authAPI.setAuthToken(this.token)
+          console.log('[Auth] Token is valid, initializing')
+          
+          // Ensure API client has the token
+          updateAuthHeader(this.token)
           
           // Restore user info from localStorage and token
           const username = localStorage.getItem('username')
@@ -148,6 +160,7 @@ export const useAuthStore = defineStore('auth', {
             this.setUserFromToken(this.token, username)
           }
         } else {
+          console.log('[Auth] Token is expired, logging out')
           // If token is expired, clear it
           this.logout()
         }
@@ -156,13 +169,15 @@ export const useAuthStore = defineStore('auth', {
     
     // Helper methods
     setToken(token) {
+      console.log('[Auth] Setting token')
       this.token = token
-      localStorage.setItem('token', token)
-      authAPI.setAuthToken(token)
+      // Update API auth headers
+      updateAuthHeader(token)
     },
     
     setUserFromToken(token, username) {
       try {
+        console.log('[Auth] Extracting user data from token')
         const decoded = jwtDecode(token)
         this.user = { 
           username,
@@ -171,6 +186,7 @@ export const useAuthStore = defineStore('auth', {
         }
         localStorage.setItem('username', username)
       } catch (e) {
+        console.error('[Auth] Error decoding token:', e)
         // Fallback if decode fails
         this.user = { username }
         localStorage.setItem('username', username)
@@ -178,7 +194,8 @@ export const useAuthStore = defineStore('auth', {
     },
     
     handleError(error, defaultMessage) {
-      console.error(defaultMessage, error)
+      console.error('[Auth] Error:', defaultMessage, error)
+      
       if (error.response && error.response.data) {
         // Handle structured error response
         if (typeof error.response.data === 'object' && error.response.data.message) {
