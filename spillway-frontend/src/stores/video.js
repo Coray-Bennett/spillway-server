@@ -6,12 +6,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081
 export const useVideoStore = defineStore('video', {
   state: () => ({
     videos: [],
+    myVideos: [], // Explicitly track user's videos
     playlists: [],
     currentVideo: null,
     currentPlaylist: null,
     isLoading: false,
     error: null,
-    uploadProgress: 0
+    uploadProgress: 0,
+    videoStatusPolling: null
   }),
   
   actions: {
@@ -50,7 +52,7 @@ export const useVideoStore = defineStore('video', {
           }
         })
         
-        return { success: true }
+        return { success: true, videoId: videoId }
       } catch (error) {
         this.error = error.response?.data || 'Upload failed'
         return { success: false, error: this.error }
@@ -72,6 +74,12 @@ export const useVideoStore = defineStore('video', {
           this.videos[index] = response.data
         }
         
+        // Also update in myVideos if present
+        const myVideoIndex = this.myVideos.findIndex(v => v.id === videoId)
+        if (myVideoIndex !== -1) {
+          this.myVideos[myVideoIndex] = response.data
+        }
+        
         if (this.currentVideo?.id === videoId) {
           this.currentVideo = response.data
         }
@@ -85,37 +93,29 @@ export const useVideoStore = defineStore('video', {
       }
     },
     
-    async deleteVideo(videoId) {
+    async getVideo(videoId) {
       this.isLoading = true
       this.error = null
       
       try {
-        await axios.delete(`${API_BASE_URL}/video/${videoId}`)
-        
-        // Remove from local state
-        this.videos = this.videos.filter(v => v.id !== videoId)
-        
-        if (this.currentVideo?.id === videoId) {
-          this.currentVideo = null
-        }
-        
-        return { success: true }
-      } catch (error) {
-        this.error = error.response?.data || 'Failed to delete video'
-        return { success: false, error: this.error }
-      } finally {
-        this.isLoading = false
-      }
-    },
-    
-    async getVideo(videoId) {
-      try {
+        console.log(`Fetching video metadata for ID: ${videoId}`)
         const response = await axios.get(`${API_BASE_URL}/video/${videoId}`)
+        console.log('Video metadata response:', response.status)
         this.currentVideo = response.data
         return response.data
       } catch (error) {
+        console.error('Failed to fetch video metadata:', error)
+        
+        // Handle specific 401/403 errors
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+          this.error = 'Authentication required to access this video'
+          return { success: false, error: this.error, unauthorized: true }
+        }
+        
         this.error = error.response?.data || 'Failed to fetch video'
-        throw error
+        return { success: false, error: this.error }
+      } finally {
+        this.isLoading = false
       }
     },
     
@@ -135,11 +135,44 @@ export const useVideoStore = defineStore('video', {
       
       try {
         const response = await axios.get(`${API_BASE_URL}/video/my-videos`)
-        this.videos = response.data
-        return this.videos
+        this.myVideos = response.data
+        this.videos = [...this.myVideos] // Also update general videos list
+        return this.myVideos
       } catch (error) {
-        this.error = error.response?.data || 'Failed to fetch your videos'
-        throw error
+        if (error.response?.status === 401) {
+          this.error = 'Authentication required to view your videos'
+          return { success: false, error: this.error, unauthorized: true }
+        } else {
+          this.error = error.response?.data || 'Failed to fetch your videos'
+          return { success: false, error: this.error }
+        }
+      } finally {
+        this.isLoading = false
+      }
+    },
+    
+    async getAllVideos() {
+      // Fetch all videos regardless of authentication
+      this.isLoading = true
+      this.error = null
+      
+      try {
+        // Use the search endpoint to get all videos
+        const response = await axios.post(`${API_BASE_URL}/search/videos`, {
+          query: '',
+          page: 0,
+          size: 50
+        })
+        
+        if (response.data && Array.isArray(response.data.content)) {
+          this.videos = response.data.content
+          return this.videos
+        }
+        return []
+      } catch (error) {
+        console.error('Failed to fetch all videos:', error)
+        this.error = error.response?.data || 'Failed to fetch videos'
+        return { success: false, error: this.error }
       } finally {
         this.isLoading = false
       }
@@ -155,80 +188,14 @@ export const useVideoStore = defineStore('video', {
         this.playlists.unshift(response.data)
         return { success: true, playlist: response.data }
       } catch (error) {
-        this.error = error.response?.data || 'Failed to create playlist'
+        if (error.response?.status === 401) {
+          this.error = 'Authentication required to create playlists'
+        } else {
+          this.error = error.response?.data || 'Failed to create playlist'
+        }
         return { success: false, error: this.error }
       } finally {
         this.isLoading = false
-      }
-    },
-    
-    async updatePlaylist(playlistId, updates) {
-      this.isLoading = true
-      this.error = null
-      
-      try {
-        const response = await axios.put(`${API_BASE_URL}/playlist/${playlistId}`, updates)
-        
-        // Update local state
-        const index = this.playlists.findIndex(p => p.id === playlistId)
-        if (index !== -1) {
-          this.playlists[index] = response.data
-        }
-        
-        if (this.currentPlaylist?.id === playlistId) {
-          this.currentPlaylist = response.data
-        }
-        
-        return { success: true, playlist: response.data }
-      } catch (error) {
-        this.error = error.response?.data || 'Failed to update playlist'
-        return { success: false, error: this.error }
-      } finally {
-        this.isLoading = false
-      }
-    },
-    
-    async deletePlaylist(playlistId) {
-      this.isLoading = true
-      this.error = null
-      
-      try {
-        await axios.delete(`${API_BASE_URL}/playlist/${playlistId}`)
-        
-        // Remove from local state
-        this.playlists = this.playlists.filter(p => p.id !== playlistId)
-        
-        if (this.currentPlaylist?.id === playlistId) {
-          this.currentPlaylist = null
-        }
-        
-        return { success: true }
-      } catch (error) {
-        this.error = error.response?.data || 'Failed to delete playlist'
-        return { success: false, error: this.error }
-      } finally {
-        this.isLoading = false
-      }
-    },
-    
-    async getPlaylist(playlistId) {
-      try {
-        const response = await axios.get(`${API_BASE_URL}/playlist/${playlistId}`)
-        this.currentPlaylist = response.data
-        return response.data
-      } catch (error) {
-        this.error = error.response?.data || 'Failed to fetch playlist'
-        throw error
-      }
-    },
-    
-    async getPlaylistVideos(playlistId) {
-      try {
-        const response = await axios.get(`${API_BASE_URL}/playlist/${playlistId}/videos`)
-        return response.data
-      } catch (error) {
-        this.error = error.response?.data || 'Failed to fetch playlist videos'
-        throw error
       }
     },
     
@@ -241,14 +208,18 @@ export const useVideoStore = defineStore('video', {
         this.playlists = response.data
         return this.playlists
       } catch (error) {
-        this.error = error.response?.data || 'Failed to fetch your playlists'
-        throw error
+        if (error.response?.status === 401) {
+          this.error = 'Authentication required to access your playlists'
+        } else {
+          this.error = error.response?.data || 'Failed to fetch your playlists'
+        }
+        return { success: false, error: this.error }
       } finally {
         this.isLoading = false
       }
     },
     
-    // Playlist Video Management
+    // Playlist Video Management 
     async addVideoToPlaylist(playlistId, videoId, details = null) {
       this.isLoading = true
       this.error = null
@@ -275,46 +246,114 @@ export const useVideoStore = defineStore('video', {
         
         return { success: true }
       } catch (error) {
-        this.error = error.response?.data || 'Failed to add video to playlist'
+        if (error.response?.status === 401) {
+          this.error = 'Authentication required to modify playlists'
+        } else if (error.response?.status === 403) {
+          this.error = 'You do not have permission to modify this playlist'
+        } else {
+          this.error = error.response?.data || 'Failed to add video to playlist'
+        }
         return { success: false, error: this.error }
       } finally {
         this.isLoading = false
       }
     },
     
-    async removeVideoFromPlaylist(playlistId, videoId) {
-      this.isLoading = true
-      this.error = null
-      
-      try {
-        await axios.delete(`${API_BASE_URL}/playlist/${playlistId}/videos/${videoId}`)
+    // Video conversion monitoring
+    async pollVideoConversionStatus(videoId, interval = 2000, maxAttempts = 60) {
+      return new Promise((resolve, reject) => {
+        let attempts = 0
+        let lastStatus = null
         
-        // Update local video state if available
-        const videoIndex = this.videos.findIndex(v => v.id === videoId)
-        if (videoIndex !== -1) {
-          this.videos[videoIndex].playlistId = null
-          this.videos[videoIndex].seasonNumber = null
-          this.videos[videoIndex].episodeNumber = null
+        const poll = async () => {
+          try {
+            const status = await this.getVideoStatus(videoId)
+            
+            if (!status) {
+              attempts++
+              if (attempts >= maxAttempts) {
+                reject(new Error('Max polling attempts reached'))
+                return
+              }
+              this.videoStatusPolling = setTimeout(poll, interval)
+              return
+            }
+            
+            lastStatus = status.status || status.conversionStatus
+            
+            if (lastStatus === 'COMPLETED') {
+              resolve(status)
+              return
+            } else if (lastStatus === 'FAILED') {
+              reject(new Error('Video conversion failed'))
+              return
+            }
+            
+            // Continue polling
+            attempts++
+            if (attempts >= maxAttempts) {
+              reject(new Error('Max polling attempts reached'))
+              return
+            }
+            
+            this.videoStatusPolling = setTimeout(poll, interval)
+          } catch (error) {
+            attempts++
+            if (attempts >= maxAttempts) {
+              reject(error)
+              return
+            }
+            this.videoStatusPolling = setTimeout(poll, interval)
+          }
         }
         
-        return { success: true }
-      } catch (error) {
-        this.error = error.response?.data || 'Failed to remove video from playlist'
-        return { success: false, error: this.error }
-      } finally {
-        this.isLoading = false
+        // Clear any existing polling
+        if (this.videoStatusPolling) {
+          clearTimeout(this.videoStatusPolling)
+        }
+        
+        // Start polling
+        poll()
+      })
+    },
+    
+    stopPolling() {
+      if (this.videoStatusPolling) {
+        clearTimeout(this.videoStatusPolling)
+        this.videoStatusPolling = null
       }
     },
     
-    // Helper method to check if a video is in process
+    // Helper methods
     isVideoProcessing(video) {
-      return video.conversionStatus === 'PENDING' || 
-             video.conversionStatus === 'IN_PROGRESS'
+      return video && (
+        video.conversionStatus === 'PENDING' || 
+        video.conversionStatus === 'IN_PROGRESS' ||
+        video.status === 'PENDING' ||
+        video.status === 'IN_PROGRESS'
+      )
     },
     
-    // Helper method to check if a video is ready
     isVideoReady(video) {
-      return video.conversionStatus === 'COMPLETED'
+      return video && (
+        video.conversionStatus === 'COMPLETED' ||
+        video.status === 'COMPLETED'
+      )
+    },
+    
+    isVideoFailed(video) {
+      return video && (
+        video.conversionStatus === 'FAILED' ||
+        video.status === 'FAILED'
+      )
+    },
+    
+    clearError() {
+      this.error = null
+    },
+    
+    clearCurrentVideo() {
+      this.currentVideo = null
     }
   }
 })

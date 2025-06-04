@@ -11,7 +11,6 @@ import com.coraybennett.spillway.service.api.VideoAccessService;
 /**
  * Default implementation of VideoAccessService.
  * Currently only allows access to content uploaded by the user.
- * Future versions can extend this to support sharing.
  */
 @Service
 public class DefaultVideoAccessService implements VideoAccessService {

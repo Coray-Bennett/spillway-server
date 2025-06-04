@@ -36,7 +36,7 @@ public class CustomUserDetailsService implements UserService, UserDetailsService
         UserBuilder builder = org.springframework.security.core.userdetails.User.withUsername(username);
         builder.password(user.getPassword());
         builder.authorities("USER");
-        builder.disabled(!user.isEnabled()); // Respect the enabled flag
+        builder.disabled(!user.isEnabled());
         return builder.build();
     }
     

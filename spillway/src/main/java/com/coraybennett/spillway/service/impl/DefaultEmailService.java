@@ -16,7 +16,7 @@ import com.coraybennett.spillway.service.api.EmailService;
 import jakarta.mail.internet.MimeMessage;
 
 @Service
-@Profile("!dev") // Active in all profiles except dev
+@Profile("!dev")
 public class DefaultEmailService implements EmailService {
     
     private static final Logger logger = LoggerFactory.getLogger(DefaultEmailService.class);
