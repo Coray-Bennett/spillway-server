@@ -2,7 +2,11 @@ package com.coraybennett.spillway.dto;
 
 import java.time.LocalDateTime;
 import com.coraybennett.spillway.model.Playlist;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
+@Data
+@NoArgsConstructor
 public class PlaylistResponse {
     private String id;
     private String name;
@@ -33,32 +37,4 @@ public class PlaylistResponse {
             this.totalDuration = 0;
         }
     }
-    
-    // Getters and setters
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    
-    public int getVideoCount() { return videoCount; }
-    public void setVideoCount(int videoCount) { this.videoCount = videoCount; }
-    
-    public String getCreatedByUsername() { return createdByUsername; }
-    public void setCreatedByUsername(String createdByUsername) { this.createdByUsername = createdByUsername; }
-    
-    public String getCreatedById() { return createdById; }
-    public void setCreatedById(String createdById) { this.createdById = createdById; }
-    
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-    
-    public Integer getTotalDuration() { return totalDuration; }
-    public void setTotalDuration(Integer totalDuration) { this.totalDuration = totalDuration; }
 }
