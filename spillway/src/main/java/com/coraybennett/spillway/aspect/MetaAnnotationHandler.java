@@ -31,12 +31,15 @@ import com.coraybennett.spillway.service.api.UserService;
 import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Aspect to handle meta-annotations for security checks.
  */
 @Aspect
 @Component
 @Order(1) // Ensure this runs first, before other aspects
+@Slf4j
 public class MetaAnnotationHandler {
 
     private final UserService userService;
@@ -134,14 +137,15 @@ public class MetaAnnotationHandler {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         
+        String idParamName = securedVideo.idParameter();
         String videoId = null;
         Object[] args = joinPoint.getArgs();
-        
+
         for (int i = 0; i < parameters.length; i++) {
             Parameter param = parameters[i];
             PathVariable pathVar = param.getAnnotation(PathVariable.class);
             
-            if (pathVar != null && (securedVideo.idParameter().equals(pathVar.value()) || securedVideo.idParameter().equals(pathVar.name()))) {
+            if (pathVar != null && idParamName.equals(pathVar.value())) {
                 if (args[i] != null) {
                     videoId = args[i].toString();
                     break;
@@ -150,7 +154,7 @@ public class MetaAnnotationHandler {
         }
         
         if (videoId == null) {
-            return ResponseEntity.badRequest().body("Video ID not found");
+            return ResponseEntity.notFound().build();
         }
         
         // Fetch the video
@@ -234,7 +238,7 @@ public class MetaAnnotationHandler {
             Parameter param = parameters[i];
             PathVariable pathVar = param.getAnnotation(PathVariable.class);
             
-            if (pathVar != null && (idParamName.equals(pathVar.value()) || idParamName.equals(pathVar.name()))) {
+            if (pathVar != null && idParamName.equals(pathVar.value())) {
                 if (args[i] != null) {
                     playlistId = args[i].toString();
                     break;
@@ -243,7 +247,7 @@ public class MetaAnnotationHandler {
         }
         
         if (playlistId == null) {
-            return ResponseEntity.badRequest().body("Playlist ID not found");
+            return ResponseEntity.notFound().build();
         }
         
         // Fetch the playlist

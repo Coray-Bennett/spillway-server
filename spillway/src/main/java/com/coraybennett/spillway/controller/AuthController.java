@@ -1,30 +1,32 @@
 package com.coraybennett.spillway.controller;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.coraybennett.spillway.annotation.Loggable;
+import com.coraybennett.spillway.annotation.Loggable.LogLevel;
 import com.coraybennett.spillway.dto.AuthRequest;
 import com.coraybennett.spillway.dto.AuthResponse;
 import com.coraybennett.spillway.dto.RegistrationRequest;
 import com.coraybennett.spillway.dto.RegistrationResponse;
 import com.coraybennett.spillway.service.api.AuthService;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Controller handling authentication operations.
  */
 @RestController
 @RequestMapping("/auth")
+@RequiredArgsConstructor
+@Slf4j
 public class AuthController {
     private final AuthService authService;
 
-    @Autowired
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
-
     @PostMapping("/login")
+    @Loggable(level = LogLevel.INFO, entryMessage = "User login", includeParameters = true)
     public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest) throws Exception {
         try {
             AuthResponse response = authService.authenticate(authRequest);
@@ -35,6 +37,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
+    @Loggable(level = LogLevel.INFO, entryMessage = "User registration", includeParameters = true)
     public ResponseEntity<?> registerUser(@RequestBody RegistrationRequest registrationRequest) {
         try {
             RegistrationResponse response = authService.register(

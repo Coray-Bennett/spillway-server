@@ -64,4 +64,9 @@ public class Playlist {
         updatedAt = LocalDateTime.now();
         log.debug("Updating playlist: {}", id);
     }
+
+    @Override
+    public String toString() {
+        return this.id;
+    }
 }

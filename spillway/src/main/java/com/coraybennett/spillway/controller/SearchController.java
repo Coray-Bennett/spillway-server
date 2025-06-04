@@ -3,34 +3,33 @@ package com.coraybennett.spillway.controller;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.coraybennett.spillway.annotation.CurrentUser;
+import com.coraybennett.spillway.annotation.Loggable;
 import com.coraybennett.spillway.annotation.UserAction;
 import com.coraybennett.spillway.dto.*;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.service.api.SearchService;
+
+import lombok.RequiredArgsConstructor;
 /**
  * Refactored controller handling search and filter operations.
  * All searches are restricted to content the authenticated user has access to.
  */
 @RestController
 @RequestMapping("/search")
+@RequiredArgsConstructor
 public class SearchController {
     private final SearchService searchService;
 
-    @Autowired
-    public SearchController(SearchService searchService) {
-        this.searchService = searchService;
-    }
-
     @PostMapping("/videos")
     @UserAction
+    @Loggable(entryMessage = "Search videos", includeParameters = true)
     public ResponseEntity<SearchResponse<VideoListResponse>> searchVideos(
             @RequestBody VideoSearchRequest request,
             @CurrentUser User user) {
@@ -54,6 +53,7 @@ public class SearchController {
 
     @PostMapping("/playlists")
     @UserAction
+    @Loggable(entryMessage = "Search playlists", includeParameters = true)
     public ResponseEntity<SearchResponse<PlaylistResponse>> searchPlaylists(
             @RequestBody PlaylistSearchRequest request,
             @CurrentUser User user) {
@@ -77,6 +77,7 @@ public class SearchController {
 
     @GetMapping("/genres")
     @UserAction
+    @Loggable(entryMessage = "Get genres", includeParameters = true)
     public ResponseEntity<List<String>> getAllGenres(@CurrentUser User user) {
         List<String> genres = searchService.getAllGenres(user);
         return ResponseEntity.ok(genres);
@@ -84,6 +85,7 @@ public class SearchController {
 
     @GetMapping("/videos/recent")
     @UserAction
+    @Loggable(entryMessage = "Get recent videos", includeParameters = true)
     public ResponseEntity<List<VideoListResponse>> getRecentVideos(
             @RequestParam(defaultValue = "10") int limit,
             @CurrentUser User user) {
@@ -97,6 +99,7 @@ public class SearchController {
 
     @GetMapping("/playlists/popular")
     @UserAction
+    @Loggable(entryMessage = "Get popular playlists", includeParameters = true)
     public ResponseEntity<List<PlaylistResponse>> getPopularPlaylists(
             @RequestParam(defaultValue = "10") int limit,
             @CurrentUser User user) {
@@ -110,6 +113,7 @@ public class SearchController {
 
     @GetMapping("/videos/quick")
     @UserAction
+    @Loggable(entryMessage = "Quick search", includeParameters = true)
     public ResponseEntity<SearchResponse<VideoListResponse>> quickSearchVideos(
             @RequestParam String q,
             @RequestParam(defaultValue = "0") int page,

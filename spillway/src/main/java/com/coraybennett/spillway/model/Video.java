@@ -87,4 +87,9 @@ public class Video {
         updatedAt = LocalDateTime.now();
         log.debug("Updating video: {}", id);
     }
+
+    @Override
+    public String toString() {
+        return this.id;
+    }
 }

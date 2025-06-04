@@ -3,15 +3,17 @@ package com.coraybennett.spillway.controller;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.coraybennett.spillway.annotation.CurrentUser;
+import com.coraybennett.spillway.annotation.Loggable;
+import com.coraybennett.spillway.annotation.Loggable.LogLevel;
 import com.coraybennett.spillway.annotation.ResolvedResource;
 import com.coraybennett.spillway.annotation.SecuredPlaylistResource;
 import com.coraybennett.spillway.annotation.UserAction;
+import com.coraybennett.spillway.dto.PlaylistResponse;
 import com.coraybennett.spillway.dto.PlaylistVideoDetails;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
@@ -19,27 +21,24 @@ import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.service.api.PlaylistService;
 import com.coraybennett.spillway.service.api.VideoService;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Fully refactored controller handling playlist operations using meta-annotations for access control.
  */
 @RestController
 @RequestMapping("/playlist")
+@RequiredArgsConstructor
+@Slf4j
 public class PlaylistController {
     private final PlaylistService playlistService;
     private final VideoService videoService;
 
-    @Autowired
-    public PlaylistController(
-            PlaylistService playlistService, 
-            VideoService videoService
-        ) {
-        this.playlistService = playlistService;
-        this.videoService = videoService;
-    }
-
     @PostMapping
     @UserAction
-    public ResponseEntity<Playlist> createPlaylist(@RequestBody Playlist playlist, @CurrentUser User user) {
+    @Loggable(level = LogLevel.INFO, entryMessage = "Create playlist", includeParameters = true, includeResult = true)
+    public ResponseEntity<PlaylistResponse> createPlaylist(@RequestBody Playlist playlist, @CurrentUser User user) {
         try {
             Playlist createdPlaylist = playlistService.createPlaylist(
                 playlist.getName(), 
@@ -47,7 +46,7 @@ public class PlaylistController {
                 user
             );
             
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdPlaylist);
+            return ResponseEntity.status(HttpStatus.CREATED).body(new PlaylistResponse(createdPlaylist));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -55,6 +54,7 @@ public class PlaylistController {
 
     @GetMapping("/{id}")
     @SecuredPlaylistResource(optionalAuth = true)
+    @Loggable(level = LogLevel.DEBUG, entryMessage = "Get playlist", includeResult = true)
     public ResponseEntity<Playlist> getPlaylist(
             @PathVariable("id") String id, 
             @CurrentUser(required = false) User user,
@@ -65,6 +65,7 @@ public class PlaylistController {
 
     @GetMapping("/{id}/videos")
     @SecuredPlaylistResource(optionalAuth = true)
+    @Loggable(entryMessage = "Get playlist videos", includeParameters = true)
     public ResponseEntity<List<Video>> getPlaylistVideos(
             @PathVariable("id") String id, 
             @CurrentUser(required = false) User user,
@@ -80,6 +81,7 @@ public class PlaylistController {
 
     @GetMapping("/my-playlists")
     @UserAction
+    @Loggable(entryMessage = "Get user playlists", includeParameters = true)
     public ResponseEntity<List<Playlist>> getMyPlaylists(@CurrentUser User user) {
         List<Playlist> playlists = playlistService.listPlaylists(user.getId());
         return ResponseEntity.ok(playlists);
@@ -87,6 +89,7 @@ public class PlaylistController {
 
     @PutMapping("/{id}")
     @SecuredPlaylistResource(requireWrite = true)
+    @Loggable(entryMessage = "Update playlist", includeResult = true)
     public ResponseEntity<Playlist> updatePlaylist(
             @PathVariable("id") String id, 
             @RequestBody Playlist playlistDetails, 
@@ -113,6 +116,7 @@ public class PlaylistController {
 
     @PostMapping("/{playlistId}/videos/{videoId}")
     @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
+    @Loggable(entryMessage = "Add video to playlist", includeParameters = true)
     public ResponseEntity<?> addVideoToPlaylist(
             @PathVariable("playlistId") String playlistId, 
             @PathVariable("videoId") String videoId,
@@ -149,6 +153,7 @@ public class PlaylistController {
 
     @DeleteMapping("/{playlistId}/videos/{videoId}")
     @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
+    @Loggable(entryMessage = "Remove video from playlist", includeParameters = true)
     public ResponseEntity<?> removeVideoFromPlaylist(
             @PathVariable("playlistId") String playlistId, 
             @PathVariable("videoId") String videoId,
