@@ -2,52 +2,45 @@ package com.coraybennett.spillway.controller;
 
 import java.util.List;
 import java.util.Optional;
-import java.security.Principal;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import com.coraybennett.spillway.model.Playlist;
-import com.coraybennett.spillway.model.Video;
-import com.coraybennett.spillway.model.User;
+import com.coraybennett.spillway.annotation.CurrentUser;
+import com.coraybennett.spillway.annotation.ResolvedResource;
+import com.coraybennett.spillway.annotation.SecuredPlaylistResource;
+import com.coraybennett.spillway.annotation.UserAction;
 import com.coraybennett.spillway.dto.PlaylistVideoDetails;
+import com.coraybennett.spillway.model.Playlist;
+import com.coraybennett.spillway.model.User;
+import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.service.api.PlaylistService;
-import com.coraybennett.spillway.service.api.UserService;
-import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
- * Controller handling playlist operations.
+ * Fully refactored controller handling playlist operations using meta-annotations for access control.
  */
 @RestController
 @RequestMapping("/playlist")
 public class PlaylistController {
     private final PlaylistService playlistService;
     private final VideoService videoService;
-    private final UserService userService;
-    private final VideoAccessService videoAccessService;
 
     @Autowired
     public PlaylistController(
             PlaylistService playlistService, 
-            VideoService videoService, 
-            UserService userService,
-            VideoAccessService videoAccessService
+            VideoService videoService
         ) {
         this.playlistService = playlistService;
         this.videoService = videoService;
-        this.userService = userService;
-        this.videoAccessService = videoAccessService;
     }
 
     @PostMapping
-    public ResponseEntity<Playlist> createPlaylist(@RequestBody Playlist playlist, Principal principal) {
+    @UserAction
+    public ResponseEntity<Playlist> createPlaylist(@RequestBody Playlist playlist, @CurrentUser User user) {
         try {
-            User user = userService.findByUsername(principal.getName())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-            
             Playlist createdPlaylist = playlistService.createPlaylist(
                 playlist.getName(), 
                 playlist.getDescription(), 
@@ -61,45 +54,23 @@ public class PlaylistController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Playlist> getPlaylist(@PathVariable String id, Principal principal) {
-        Optional<Playlist> playlistOpt = playlistService.getPlaylistById(id);
-        
-        if (playlistOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        
-        Playlist playlist = playlistOpt.get();
-        
-        // Check access permission
-        User user = principal != null ? 
-            userService.findByUsername(principal.getName()).orElse(null) : null;
-        
-        if (!videoAccessService.canAccessPlaylist(playlist, user)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
+    @SecuredPlaylistResource(optionalAuth = true)
+    public ResponseEntity<Playlist> getPlaylist(
+            @PathVariable("id") String id, 
+            @CurrentUser(required = false) User user,
+            @ResolvedResource Playlist playlist) {
         
         return ResponseEntity.ok(playlist);
     }
 
     @GetMapping("/{id}/videos")
-    public ResponseEntity<List<Video>> getPlaylistVideos(@PathVariable String id, Principal principal) {
+    @SecuredPlaylistResource(optionalAuth = true)
+    public ResponseEntity<List<Video>> getPlaylistVideos(
+            @PathVariable("id") String id, 
+            @CurrentUser(required = false) User user,
+            @ResolvedResource Playlist playlist) {
+        
         try {
-            Optional<Playlist> playlistOpt = playlistService.getPlaylistById(id);
-            
-            if (playlistOpt.isEmpty()) {
-                return ResponseEntity.notFound().build();
-            }
-            
-            Playlist playlist = playlistOpt.get();
-            
-            // Check access permission
-            User user = principal != null ? 
-                userService.findByUsername(principal.getName()).orElse(null) : null;
-            
-            if (!videoAccessService.canAccessPlaylist(playlist, user)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-            
             List<Video> videos = playlistService.getPlaylistVideos(id);
             return ResponseEntity.ok(videos);
         } catch (IllegalArgumentException e) {
@@ -108,34 +79,21 @@ public class PlaylistController {
     }
 
     @GetMapping("/my-playlists")
-    public ResponseEntity<List<Playlist>> getMyPlaylists(Principal principal) {
-        User user = userService.findByUsername(principal.getName())
-            .orElseThrow(() -> new RuntimeException("User not found"));
-            
+    @UserAction
+    public ResponseEntity<List<Playlist>> getMyPlaylists(@CurrentUser User user) {
         List<Playlist> playlists = playlistService.listPlaylists(user.getId());
         return ResponseEntity.ok(playlists);
     }
 
     @PutMapping("/{id}")
+    @SecuredPlaylistResource(requireWrite = true)
     public ResponseEntity<Playlist> updatePlaylist(
-            @PathVariable String id, 
+            @PathVariable("id") String id, 
             @RequestBody Playlist playlistDetails, 
-            Principal principal) {
+            @CurrentUser User user,
+            @ResolvedResource Playlist playlist) {
+        
         try {
-            User user = userService.findByUsername(principal.getName())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-            
-            Optional<Playlist> playlistOpt = playlistService.getPlaylistById(id);
-            if (playlistOpt.isEmpty()) {
-                return ResponseEntity.notFound().build();
-            }
-            
-            Playlist playlist = playlistOpt.get();
-            
-            if (!playlist.getCreatedBy().getId().equals(user.getId())) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-            
             // Update the playlist with new details
             playlist.setName(playlistDetails.getName());
             playlist.setDescription(playlistDetails.getDescription());
@@ -154,27 +112,19 @@ public class PlaylistController {
     }
 
     @PostMapping("/{playlistId}/videos/{videoId}")
+    @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
     public ResponseEntity<?> addVideoToPlaylist(
-            @PathVariable String playlistId, 
-            @PathVariable String videoId,
+            @PathVariable("playlistId") String playlistId, 
+            @PathVariable("videoId") String videoId,
             @RequestBody(required = false) PlaylistVideoDetails details,
-            Principal principal) {
+            @CurrentUser User user,
+            @ResolvedResource Playlist playlist) {
         
         try {
-            User user = userService.findByUsername(principal.getName())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-            
-            Optional<Playlist> playlistOpt = playlistService.getPlaylistById(playlistId);
             Optional<Video> videoOpt = videoService.getVideoById(videoId);
             
-            if (playlistOpt.isEmpty() || videoOpt.isEmpty()) {
+            if (videoOpt.isEmpty()) {
                 return ResponseEntity.notFound().build();
-            }
-            
-            Playlist playlist = playlistOpt.get();
-            
-            if (!playlist.getCreatedBy().getId().equals(user.getId())) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
             
             playlistService.addVideoToPlaylist(playlistId, videoId);
@@ -198,29 +148,14 @@ public class PlaylistController {
     }
 
     @DeleteMapping("/{playlistId}/videos/{videoId}")
+    @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
     public ResponseEntity<?> removeVideoFromPlaylist(
-            @PathVariable String playlistId, 
-            @PathVariable String videoId,
-            Principal principal) {
+            @PathVariable("playlistId") String playlistId, 
+            @PathVariable("videoId") String videoId,
+            @CurrentUser User user) {
         
         try {
-            User user = userService.findByUsername(principal.getName())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-            
-            Optional<Playlist> playlistOpt = playlistService.getPlaylistById(playlistId);
-            
-            if (playlistOpt.isEmpty()) {
-                return ResponseEntity.notFound().build();
-            }
-            
-            Playlist playlist = playlistOpt.get();
-            
-            if (!playlist.getCreatedBy().getId().equals(user.getId())) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-            
             playlistService.removeVideoFromPlaylist(playlistId, videoId);
-            
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.Principal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,65 +22,50 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.coraybennett.spillway.annotation.CurrentUser;
+import com.coraybennett.spillway.annotation.ResolvedResource;
+import com.coraybennett.spillway.annotation.SecuredVideoResource;
+import com.coraybennett.spillway.annotation.UserAction;
 import com.coraybennett.spillway.dto.VideoListResponse;
+import com.coraybennett.spillway.model.ConversionStatus;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
-import com.coraybennett.spillway.service.api.UserService;
-import com.coraybennett.spillway.service.api.VideoAccessService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 /**
- * Controller handling video-related operations.
+ * Fully refactored controller handling video-related operations using meta-annotations for access control.
  */
 @RestController
 @RequestMapping("/video")
 public class VideoController {
     private final VideoService videoService;
-    private final UserService userService;
     private final VideoRepository videoRepository;
     private final StorageService storageService;
-    private final VideoAccessService videoAccessService;
-
     @Autowired
     public VideoController(
         VideoService videoService, 
-        UserService userService,
         VideoRepository videoRepository,
-        StorageService storageService,
-        VideoAccessService videoAccessService
+        StorageService storageService
     ) {
         this.videoService = videoService;
-        this.userService = userService;
         this.videoRepository = videoRepository;
         this.storageService = storageService;
-        this.videoAccessService = videoAccessService;
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getVideoMetadata(@PathVariable String id, Principal principal) {
-        Optional<Video> videoOpt = videoService.getVideoById(id);
-        
-        if (videoOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        
-        Video video = videoOpt.get();
-        
-        // Check access permission
-        User user = principal != null ? 
-            userService.findByUsername(principal.getName()).orElse(null) : null;
-        
-        if (!videoAccessService.canAccessVideo(video, user)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
+    @SecuredVideoResource(optionalAuth = true)
+    public ResponseEntity<?> getVideoMetadata(
+            @PathVariable("id") String id, 
+            @CurrentUser(required = false) User user,
+            @ResolvedResource Video video) {
         
         return ResponseEntity.ok(video);
     }
 
     @GetMapping("/{id}/status")
-    public ResponseEntity<?> getConversionStatus(@PathVariable String id) {
+    public ResponseEntity<?> getConversionStatus(@PathVariable("id") String id) {
         VideoService.ConversionProgress progress = videoService.getConversionProgress(id);
         if (progress == null) {
             return ResponseEntity.notFound().build();
@@ -90,31 +74,19 @@ public class VideoController {
     }
     
     @GetMapping("/{id}/playlist")
-    public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(@PathVariable String id, Principal principal) throws IOException {
+    @SecuredVideoResource(optionalAuth = true)
+    public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(
+            @PathVariable("id") String id,
+            @CurrentUser(required = false) User user,
+            @ResolvedResource Video video) throws IOException {
         
         try {
-            id = UUID.fromString(id).toString();
+            UUID.fromString(id);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
         
-
-        Optional<Video> videoOpt = videoService.getVideoById(id);
-        if (videoOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        
-        Video video = videoOpt.get();
-
-        // Check access permission
-        User user = principal != null ? 
-            userService.findByUsername(principal.getName()).orElse(null) : null;
-        
-        if (!videoAccessService.canAccessVideo(video, user)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        
-        if (video.getConversionStatus() != com.coraybennett.spillway.model.ConversionStatus.COMPLETED) {
+        if (video.getConversionStatus() != ConversionStatus.COMPLETED) {
             return ResponseEntity.status(HttpStatus.ACCEPTED).build();
         }
 
@@ -142,16 +114,15 @@ public class VideoController {
     }
 
     @GetMapping("/{id}/playlist/{quality}")
+    @SecuredVideoResource(optionalAuth = true, handling = SecuredVideoResource.ResourceHandling.VERIFY_ONLY)
     public ResponseEntity<ByteArrayResource> getVideoQualityPlaylist(
-            @PathVariable String id, 
-            @PathVariable String quality) throws IOException {
+            @PathVariable("id") String id, 
+            @PathVariable("quality") String quality,
+            @CurrentUser(required = false) User user) throws IOException {
         
         Optional<Video> video = videoService.getVideoById(id);
-        if (video.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
         
-        if (video.get().getConversionStatus() != com.coraybennett.spillway.model.ConversionStatus.COMPLETED) {
+        if (video.get().getConversionStatus() != ConversionStatus.COMPLETED) {
             return ResponseEntity.status(HttpStatus.ACCEPTED).build();
         }
 
@@ -184,15 +155,12 @@ public class VideoController {
     }
 
     @GetMapping("/{id}/segments/{filename}")
+    @SecuredVideoResource(optionalAuth = true, handling = SecuredVideoResource.ResourceHandling.VERIFY_ONLY)
     public ResponseEntity<ByteArrayResource> getVideoSegment(
-            @PathVariable String id, 
-            @PathVariable String filename) throws IOException {
-                
-        Optional<Video> video = videoService.getVideoById(id);
-        if (video.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        
+            @PathVariable("id") String id, 
+            @PathVariable("filename") String filename,
+            @CurrentUser(required = false) User user) throws IOException {
+            
         Path segmentPath = Paths.get(videoService.getVideoConversionService().getOutputDirectory().toString(),
                                    id,
                                    filename);
@@ -216,13 +184,8 @@ public class VideoController {
     }
 
     @GetMapping("/my-videos")
-    public ResponseEntity<List<VideoListResponse>> getMyVideos(Principal principal) {
-        Optional<User> userOpt = userService.findByUsername(principal.getName());
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-        
-        User user = userOpt.get();
+    @UserAction
+    public ResponseEntity<List<VideoListResponse>> getMyVideos(@CurrentUser User user) {
         List<Video> myVideos = videoService.listVideos(user.getId());
         List<VideoListResponse> videoResponses = myVideos.stream()
             .map(VideoListResponse::new)
@@ -232,23 +195,12 @@ public class VideoController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateVideo(@PathVariable String id, @RequestBody Video videoDetails, Principal principal) {
-        Optional<User> userOpt = userService.findByUsername(principal.getName());
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-        
-        User user = userOpt.get();
-        Optional<Video> videoOpt = videoService.getVideoById(id);
-        if (videoOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        
-        Video video = videoOpt.get();
-        
-        if (!user.getId().equals(video.getUploadedBy().getId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
+    @SecuredVideoResource(requireWrite = true)
+    public ResponseEntity<?> updateVideo(
+            @PathVariable("id") String id, 
+            @RequestBody Video videoDetails, 
+            @CurrentUser User user,
+            @ResolvedResource Video video) {
         
         video.setTitle(videoDetails.getTitle());
         video.setDescription(videoDetails.getDescription());
