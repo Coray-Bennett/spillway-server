@@ -106,7 +106,7 @@ public class DefaultVideoService implements VideoService {
             video.setConversionStatus(ConversionStatus.IN_PROGRESS);
             videoRepository.save(video);
             
-            videoConversionService.convertVideo(video, tempFilePath);
+            videoConversionService.convertToHls(tempFilePath, video);
             log.info("Video conversion initiated for video ID: {}", videoId);
             
         } catch (Exception e) {

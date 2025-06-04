@@ -24,7 +24,7 @@ public class VideoShareRequest {
     private String sharedWithUsername;
     
     @NotNull(message = "Permission level is required")
-    private SharePermission permission = SharePermission.read;
+    private SharePermission permission = SharePermission.READ;
     
     private LocalDateTime expiresAt;
 }
