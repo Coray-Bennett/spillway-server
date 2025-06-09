@@ -27,6 +27,11 @@ const router = createRouter({
       ]
     },
     {
+      path: '/confirm-email',
+      name: 'confirm-email',
+      component: () => import('../views/EmailConfirmationView.vue')
+    },
+    {
       path: '/upload',
       name: 'upload',
       component: () => import('../views/UploadView.vue'),
@@ -42,6 +47,12 @@ const router = createRouter({
       path: '/playlists',
       name: 'playlists',
       component: () => import('../views/PlaylistsView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/shared',
+      name: 'shared-videos',
+      component: () => import('../views/SharedVideosView.vue'),
       meta: { requiresAuth: true }
     },
     {

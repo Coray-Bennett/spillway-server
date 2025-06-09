@@ -48,6 +48,10 @@
             <BaseIcon name="playlist" :size="16" />
             <span>Playlists</span>
           </router-link>
+          <router-link to="/shared" class="nav-link">
+            <BaseIcon name="share" :size="16" />
+            <span>Shared Videos</span>
+          </router-link>
           <button @click="handleLogout" class="btn btn-danger nav-btn">
             Logout
           </button>

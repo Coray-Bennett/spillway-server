@@ -23,15 +23,21 @@
           <h1 class="video-title">{{ videoMetadata?.title || videoId }}</h1>
           <p v-if="!videoMetadata">Playlist URL: {{ playlistUrl }}</p>
 
-          <div v-if="isOwner" class="video-actions">
-            <button @click="showEditModal = true" class="btn btn-secondary">
-              <BaseIcon name="edit" :size="16" />
-              Edit
-            </button>
-            <button @click="handleDelete" class="btn btn-danger">
-              <BaseIcon name="trash" :size="16" />
-              Delete
-            </button>
+          <div class="video-actions">
+            <div v-if="isOwner" class="owner-actions">
+              <button @click="showEditModal = true" class="btn btn-secondary">
+                <BaseIcon name="edit" :size="16" />
+                Edit
+              </button>
+              <button @click="showSharingModal = true" class="btn btn-outline">
+                <BaseIcon name="share" :size="16" />
+                Share Video
+              </button>
+              <button @click="handleDelete" class="btn btn-danger">
+                <BaseIcon name="trash" :size="16" />
+                Delete
+              </button>
+            </div>
           </div>
           
           <div v-if="videoMetadata" class="video-meta">
@@ -95,6 +101,13 @@
         @close="showEditModal = false"
         @updated="onVideoUpdated"
       />
+
+      <VideoSharingModal
+        v-if="showSharingModal && videoMetadata"
+        :video="videoMetadata"
+        @close="showSharingModal = false"
+        @shared="onVideoShared"
+      />
     </div>
   </div>
 </template>
@@ -108,6 +121,7 @@ import { formatDate } from '@/utils/date'
 import { formatDuration } from '@/utils/metadata'
 import Hls from 'hls.js'
 import VideoEditModal from '../components/VideoEditModal.vue'
+import VideoSharingModal from '../components/VideoSharingModal.vue'
 import PlaylistManager from '../components/PlaylistManager.vue'
 import BaseIcon from '../components/icons/BaseIcon.vue'
 
@@ -118,6 +132,7 @@ const videoPlayer = ref(null)
 const error = ref('')
 const videoMetadata = ref(null)
 const showEditModal = ref(false)
+const showSharingModal = ref(false)
 const authStore = useAuthStore()
 const videoStore = useVideoStore()
 
@@ -140,6 +155,11 @@ async function handleDelete() {
 function onVideoUpdated(updatedVideo) {
   videoMetadata.value = updatedVideo
   showEditModal.value = false
+}
+
+function onVideoShared(share) {
+  console.log('Video shared successfully:', share)
+  showSharingModal.value = false
 }
 
 let hls = null
@@ -407,17 +427,28 @@ onMounted(async () => {
   color: #6b7280;
 }
 
+.video-actions {
+  margin-bottom: 2rem;
+}
+
+.owner-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .btn {
-  display: inline-block;
-  padding: 0.5rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
   border-radius: 0.5rem;
   font-weight: 500;
   text-decoration: none;
   border: none;
   cursor: pointer;
   transition: all 0.2s;
-  margin-top: 1rem;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
 }
 
 .btn-primary {
@@ -429,6 +460,36 @@ onMounted(async () => {
   background-color: var(--accent-hover);
 }
 
+.btn-secondary {
+  background-color: var(--secondary-bg);
+  color: var(--primary-text);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background-color: var(--hover-bg);
+}
+
+.btn-outline {
+  background-color: transparent;
+  color: var(--accent-color);
+  border: 1px solid var(--accent-color);
+}
+
+.btn-outline:hover {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.btn-danger {
+  background-color: var(--danger-color);
+  color: white;
+}
+
+.btn-danger:hover {
+  opacity: 0.9;
+}
+
 @media (max-width: 768px) {
   .video-meta {
     flex-direction: column;
@@ -437,6 +498,11 @@ onMounted(async () => {
   
   .info-label {
     width: auto;
+  }
+  
+  .owner-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

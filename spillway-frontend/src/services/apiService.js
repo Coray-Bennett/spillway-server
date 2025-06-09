@@ -95,12 +95,28 @@ export const searchAPI = {
 }
 
 /**
+ * Video Sharing API service
+ */
+export const videoSharingAPI = {
+  shareVideo: (shareRequest) => apiClient.post('/video/sharing', shareRequest),
+  getMyCreatedShares: () => apiClient.get('/video/sharing/created-by-me'),
+  getSharedWithMe: () => apiClient.get('/video/sharing/shared-with-me'),
+  getSharesForVideo: (videoId) => apiClient.get(`/video/sharing/video/${videoId}`),
+  getShare: (shareId) => apiClient.get(`/video/sharing/${shareId}`),
+  revokeShare: (shareId) => apiClient.delete(`/video/sharing/${shareId}`)
+}
+
+/**
  * Playlist API service
  */
 export const playlistAPI = {
   createPlaylist: (playlistData) => apiClient.post('/playlist', playlistData),
+  getPlaylist: (playlistId) => apiClient.get(`/playlist/${playlistId}`),
+  getPlaylistVideos: (playlistId) => apiClient.get(`/playlist/${playlistId}/videos`),
   getUserPlaylists: () => apiClient.get('/playlist/my-playlists'),
-  addVideoToPlaylist: (playlistId, videoId, details) => apiClient.post(`/playlist/${playlistId}/videos/${videoId}`, details)
+  updatePlaylist: (playlistId, playlistData) => apiClient.put(`/playlist/${playlistId}`, playlistData),
+  addVideoToPlaylist: (playlistId, videoId, details) => apiClient.post(`/playlist/${playlistId}/videos/${videoId}`, details),
+  removeVideoFromPlaylist: (playlistId, videoId) => apiClient.delete(`/playlist/${playlistId}/videos/${videoId}`)
 }
 
 export default {
@@ -108,5 +124,6 @@ export default {
   video: videoAPI,
   search: searchAPI,
   playlist: playlistAPI,
+  sharing: videoSharingAPI,
   updateAuthHeader
 }

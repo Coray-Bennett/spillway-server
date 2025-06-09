@@ -1,16 +1,27 @@
 <template>
-  <div class="videos-view">
-    <div class="view-header">
-      <h1>Videos</h1>
-      
-      <AppButton 
-        v-if="isAuthenticated" 
-        to="/upload" 
-        icon="upload"
-        variant="primary"
-      >
-        Upload Video
-      </AppButton>
+    <div class="videos-view">
+      <div class="view-header">
+        <h1>Videos</h1>
+        
+        <div class="header-actions">
+          <AppButton 
+            @click="showAdvancedSearch = true"
+            icon="search"
+            variant="outline"
+            size="medium"
+          >
+            Advanced Search
+          </AppButton>
+          
+          <AppButton 
+            v-if="isAuthenticated" 
+            to="/upload" 
+            icon="upload"
+            variant="primary"
+          >
+            Upload Video
+          </AppButton>
+        </div>
     </div>
     
     <VideoSearchFilter 
@@ -79,15 +90,31 @@
         </AppButton>
       </template>
     </EmptyState>
+
+    <!-- Advanced Search Modal -->
+    <AdvancedSearchModal 
+      v-if="showAdvancedSearch"
+      @close="showAdvancedSearch = false"
+      @result-selected="selectVideo"
+    />
+
+    <!-- Video Sharing Modal -->
+    <VideoSharingModal 
+      v-if="showSharingModal && selectedVideo"
+      :video="selectedVideo"
+      @close="closeSharingModal"
+      @shared="onVideoShared"
+    />
   </div>
 </template>
-
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import VideoGallery from '@/components/VideoGallery.vue'
 import VideoSearchFilter from '@/components/VideoSearchFilter.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import AdvancedSearchModal from '@/components/AdvancedSearchModal.vue'
+import VideoSharingModal from '@/components/VideoSharingModal.vue'
 import { useVideoStore } from '@/stores/video'
 import { useSearchStore } from '@/stores/search'
 import { useAuthStore } from '@/stores/auth'
@@ -103,6 +130,9 @@ const router = useRouter()
 const currentSearchQuery = ref('')
 const error = ref(null)
 const isLoading = ref(false)
+const showAdvancedSearch = ref(false)
+const showSharingModal = ref(false)
+const selectedVideo = ref(null)
 
 // My videos section state
 const myVideos = ref([])
@@ -208,6 +238,21 @@ function clearSearch() {
   searchStore.clearSearch()
 }
 
+function openSharingModal(video) {
+  selectedVideo.value = video
+  showSharingModal.value = true
+}
+
+function closeSharingModal() {
+  showSharingModal.value = false
+  selectedVideo.value = null
+}
+
+function onVideoShared(share) {
+  // Handle successful video share (could show notification)
+  console.log('Video shared successfully:', share)
+}
+
 // Lifecycle hooks
 onMounted(async () => {
   // Ensure auth is initialized
@@ -260,5 +305,16 @@ h1 {
     align-items: flex-start;
     gap: 1rem;
   }
+  
+  .header-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+}
+
+.header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
 }
 </style>

@@ -4,10 +4,10 @@
       <header class="page-header">
         <div class="header-content">
           <h1 class="page-title">Playlists</h1>
-          <router-link to="/upload" class="btn btn-primary">
+          <button @click="showCreateModal = true" class="btn btn-primary">
             <BaseIcon name="plus" :size="16" />
             Create Playlist
-          </router-link>
+          </button>
         </div>
       </header>
       
@@ -19,9 +19,9 @@
         <BaseIcon name="folder" :size="64" class="empty-icon" />
         <h2 class="empty-title">No playlists yet</h2>
         <p class="empty-text">Start by creating your first playlist</p>
-        <router-link to="/upload" class="btn btn-primary">
+        <button @click="showCreateModal = true" class="btn btn-primary">
           Create Playlist
-        </router-link>
+        </button>
       </div>
       
       <div v-else class="playlists-grid grid grid-2">
@@ -55,9 +55,9 @@
             class="playlist-videos"
           >
             <h4 class="videos-title">Videos in Playlist</h4>
-            <div v-if="playlistVideos[playlist.id]?.length" class="videos-list">
+            <div v-if="getPlaylistVideos(playlist.id)?.length" class="videos-list">
               <router-link
-                v-for="video in playlistVideos[playlist.id]"
+                v-for="video in getPlaylistVideos(playlist.id)"
                 :key="video.id"
                 :to="`/video/${video.id}`"
                 class="video-item"
@@ -67,7 +67,7 @@
                     S{{ video.seasonNumber }}E{{ video.episodeNumber }}
                   </span>
                   <span v-else>
-                    {{ playlistVideos[playlist.id].indexOf(video) + 1 }}
+                    {{ getPlaylistVideos(playlist.id).indexOf(video) + 1 }}
                   </span>
                 </div>
                 <div class="video-content">
@@ -90,37 +90,35 @@
         {{ error }}
       </div>
     </div>
+
+    <!-- Create Playlist Modal -->
+    <PlaylistCreateModal 
+      v-if="showCreateModal"
+      @close="showCreateModal = false"
+      @created="onPlaylistCreated"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
-import { useVideoStore } from '../stores/video'
+import { ref, onMounted, reactive, computed } from 'vue'
+import { usePlaylistStore } from '../stores/playlist'
 import BaseIcon from '../components/icons/BaseIcon.vue'
+import PlaylistCreateModal from '../components/PlaylistCreateModal.vue'
 import { formatDate } from '@/utils/date'
 
-const videoStore = useVideoStore()
-const playlists = ref(new Map())
-const playlistsArr = ref([])
-const isLoading = ref(false)
-const error = ref('')
+const playlistStore = usePlaylistStore()
 const expandedPlaylists = ref(new Set())
-const playlistVideos = reactive({})
+const showCreateModal = ref(false)
+
+// Computed properties 
+const playlists = computed(() => playlistStore.playlists)
+const playlistsArr = computed(() => playlistStore.playlists)
+const isLoading = computed(() => playlistStore.isLoading)
+const error = computed(() => playlistStore.error)
 
 onMounted(async () => {
-  try {
-    isLoading.value = true
-    await videoStore.getMyPlaylists()
-    for(const playlist of videoStore.playlists) {
-      playlists.value.set(playlist.id, playlist)
-    }
-    playlistsArr.value = videoStore.playlists
-  } catch (err) {
-    error.value = 'Failed to load playlists'
-    console.error(err)
-  } finally {
-    isLoading.value = false
-  }
+  await playlistStore.getUserPlaylists()
 })
 
 async function togglePlaylist(playlistId) {
@@ -129,15 +127,18 @@ async function togglePlaylist(playlistId) {
   } else {
     expandedPlaylists.value.add(playlistId)
     
-    if (!playlistVideos[playlistId]) {
-      try {
-        const videos = playlists.value.get(playlistId).videos
-        playlistVideos[playlistId] = videos
-      } catch (err) {
-        console.error('Failed to load playlist videos:', err)
-      }
-    }
+    // Load videos for this playlist
+    await playlistStore.getPlaylistVideos(playlistId)
   }
+}
+
+function getPlaylistVideos(playlistId) {
+  return playlistStore.getVideosForPlaylist(playlistId)
+}
+
+function onPlaylistCreated(playlist) {
+  console.log('Playlist created successfully:', playlist)
+  // The store will automatically update the playlists list
 }
 
 function formatDuration(seconds) {
