@@ -33,10 +33,6 @@
                 <BaseIcon name="share" :size="16" />
                 Share Video
               </button>
-              <button @click="handleDelete" class="btn btn-danger">
-                <BaseIcon name="trash" :size="16" />
-                Delete
-              </button>
             </div>
           </div>
           
@@ -138,19 +134,8 @@ const videoStore = useVideoStore()
 
 const isOwner = computed(() => {
   if (!authStore.isAuthenticated || !videoMetadata.value) return false
-  return videoMetadata.value.uploaderUsername === authStore.currentUsername
+  return videoMetadata.value.uploadedBy?.username === authStore.currentUsername
 })
-
-async function handleDelete() {
-  if (confirm('Are you sure you want to delete this video?')) {
-    const result = await videoStore.deleteVideo(videoMetadata.value.id)
-    if (result.success) {
-      router.push('/videos')
-    } else {
-      alert(`Failed to delete video: ${result.error}`)
-    }
-  }
-}
 
 function onVideoUpdated(updatedVideo) {
   videoMetadata.value = updatedVideo
@@ -183,7 +168,7 @@ async function fetchVideoMetadata() {
     }
     console.log('Video metadata loaded:', data)
     console.log('Current user:', authStore.currentUsername)
-    console.log('Video uploader:', data.uploaderUsername)
+    console.log('Video uploader:', data.uploadedBy?.username)
     console.log('Is owner:', isOwner.value)
   } catch (err) {
     console.error('Failed to fetch video metadata:', err)

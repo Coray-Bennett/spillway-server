@@ -125,6 +125,7 @@
   <style scoped>
   .playlist-manager {
     padding: 1.5rem;
+    margin-top: 1rem;
     background-color: var(--tertiary-bg);
     border-radius: 0.5rem;
   }

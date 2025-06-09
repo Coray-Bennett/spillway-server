@@ -15,7 +15,7 @@
           
           <AppButton 
             v-if="isAuthenticated" 
-            to="/upload" 
+            @click="upload()"
             icon="upload"
             variant="primary"
           >
@@ -23,11 +23,6 @@
           </AppButton>
         </div>
     </div>
-    
-    <VideoSearchFilter 
-      :initial-query="currentSearchQuery"
-      @search-performed="handleSearchPerformed" 
-    />
     
     <!-- Search results -->
     <VideoGallery
@@ -71,7 +66,7 @@
     >
       
       <template #empty-actions>
-        <AppButton to="/upload" variant="primary" icon="upload">
+        <AppButton @click="upload()" variant="primary" icon="upload">
           Upload your first video
         </AppButton>
       </template>
@@ -85,7 +80,7 @@
       description="There are currently no videos available to display."
     >
       <template #actions>
-        <AppButton v-if="isAuthenticated" to="/upload" variant="primary">
+        <AppButton v-if="isAuthenticated" @click="upload()" variant="primary">
           Upload your first video
         </AppButton>
       </template>
@@ -110,7 +105,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import VideoGallery from '@/components/VideoGallery.vue'
-import VideoSearchFilter from '@/components/VideoSearchFilter.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import AdvancedSearchModal from '@/components/AdvancedSearchModal.vue'
@@ -214,6 +208,10 @@ function selectVideo(video) {
 
 function playVideo(video) {
   router.push(`/video/${video.id}?autoplay=1`)
+}
+
+function upload() {
+  router.push(`/upload`)
 }
 
 async function changePage(page) {

@@ -142,7 +142,6 @@
             <button
               @click="revokeShare(share.id)"
               class="btn btn-danger"
-              :disabled="!share.isValid"
             >
               <BaseIcon name="x" :size="16" />
               Revoke Access
