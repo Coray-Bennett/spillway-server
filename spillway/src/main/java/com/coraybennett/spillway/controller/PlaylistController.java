@@ -19,6 +19,7 @@ import com.coraybennett.spillway.annotation.UserAction;
 import com.coraybennett.spillway.dto.PlaylistCreateRequest;
 import com.coraybennett.spillway.dto.PlaylistResponse;
 import com.coraybennett.spillway.dto.PlaylistUpdateRequest;
+import com.coraybennett.spillway.dto.PlaylistVideoAddResponse;
 import com.coraybennett.spillway.dto.PlaylistVideoDetails;
 import com.coraybennett.spillway.dto.VideoListResponse;
 import com.coraybennett.spillway.model.Playlist;
@@ -213,13 +214,4 @@ public class PlaylistController {
             return ResponseEntity.notFound().build();
         }
     }
-    
-    /**
-     * Response DTO for playlist video addition
-     */
-    public record PlaylistVideoAddResponse(
-        String playlistId,
-        String videoId,
-        String message
-    ) {}
 }
