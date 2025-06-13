@@ -2,6 +2,9 @@ package com.coraybennett.spillway.controller;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+
+import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,8 +16,11 @@ import com.coraybennett.spillway.annotation.Loggable.LogLevel;
 import com.coraybennett.spillway.annotation.ResolvedResource;
 import com.coraybennett.spillway.annotation.SecuredPlaylistResource;
 import com.coraybennett.spillway.annotation.UserAction;
+import com.coraybennett.spillway.dto.PlaylistCreateRequest;
 import com.coraybennett.spillway.dto.PlaylistResponse;
+import com.coraybennett.spillway.dto.PlaylistUpdateRequest;
 import com.coraybennett.spillway.dto.PlaylistVideoDetails;
+import com.coraybennett.spillway.dto.VideoListResponse;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
@@ -25,7 +31,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Fully refactored controller handling playlist operations using meta-annotations for access control.
+ * Controller handling playlist operations using standardized DTOs for all requests and responses.
  */
 @RestController
 @RequestMapping("/playlist")
@@ -35,89 +41,119 @@ public class PlaylistController {
     private final PlaylistService playlistService;
     private final VideoService videoService;
 
+    /**
+     * Create a new playlist.
+     * Accepts PlaylistCreateRequest DTO and returns PlaylistResponse DTO.
+     */
     @PostMapping
     @UserAction
     @Loggable(level = LogLevel.INFO, entryMessage = "Create playlist", includeParameters = true, includeResult = true)
-    public ResponseEntity<PlaylistResponse> createPlaylist(@RequestBody Playlist playlist, @CurrentUser User user) {
+    public ResponseEntity<PlaylistResponse> createPlaylist(
+            @Valid @RequestBody PlaylistCreateRequest request, 
+            @CurrentUser User user) {
         try {
             Playlist createdPlaylist = playlistService.createPlaylist(
-                playlist.getName(), 
-                playlist.getDescription(), 
+                request.getName(), 
+                request.getDescription(), 
                 user
             );
             
             return ResponseEntity.status(HttpStatus.CREATED).body(new PlaylistResponse(createdPlaylist));
         } catch (Exception e) {
+            log.error("Error creating playlist for user {}: {}", user.getUsername(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
+    /**
+     * Get playlist details.
+     * Returns PlaylistResponse DTO.
+     */
     @GetMapping("/{id}")
     @SecuredPlaylistResource(optionalAuth = true)
     @Loggable(level = LogLevel.DEBUG, entryMessage = "Get playlist", includeResult = true)
-    public ResponseEntity<Playlist> getPlaylist(
+    public ResponseEntity<PlaylistResponse> getPlaylist(
             @PathVariable("id") String id, 
             @CurrentUser(required = false) User user,
             @ResolvedResource Playlist playlist) {
         
-        return ResponseEntity.ok(playlist);
+        return ResponseEntity.ok(new PlaylistResponse(playlist));
     }
 
+    /**
+     * Get videos in a playlist.
+     * Returns a list of VideoListResponse DTOs.
+     */
     @GetMapping("/{id}/videos")
     @SecuredPlaylistResource(optionalAuth = true)
     @Loggable(entryMessage = "Get playlist videos", includeParameters = true)
-    public ResponseEntity<List<Video>> getPlaylistVideos(
+    public ResponseEntity<List<VideoListResponse>> getPlaylistVideos(
             @PathVariable("id") String id, 
             @CurrentUser(required = false) User user,
             @ResolvedResource Playlist playlist) {
         
         try {
             List<Video> videos = playlistService.getPlaylistVideos(id);
-            return ResponseEntity.ok(videos);
+            List<VideoListResponse> videoResponses = videos.stream()
+                .map(VideoListResponse::new)
+                .collect(Collectors.toList());
+            return ResponseEntity.ok(videoResponses);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
     }
 
+    /**
+     * Get all playlists owned by the current user.
+     * Returns a list of PlaylistResponse DTOs.
+     */
     @GetMapping("/my-playlists")
     @UserAction
     @Loggable(entryMessage = "Get user playlists", includeParameters = true)
-    public ResponseEntity<List<Playlist>> getMyPlaylists(@CurrentUser User user) {
+    public ResponseEntity<List<PlaylistResponse>> getMyPlaylists(@CurrentUser User user) {
         List<Playlist> playlists = playlistService.listPlaylists(user.getId());
-        return ResponseEntity.ok(playlists);
+        List<PlaylistResponse> playlistResponses = playlists.stream()
+            .map(PlaylistResponse::new)
+            .collect(Collectors.toList());
+        return ResponseEntity.ok(playlistResponses);
     }
 
+    /**
+     * Update playlist details.
+     * Accepts PlaylistUpdateRequest DTO and returns PlaylistResponse DTO.
+     */
     @PutMapping("/{id}")
     @SecuredPlaylistResource(requireWrite = true)
     @Loggable(entryMessage = "Update playlist", includeResult = true)
-    public ResponseEntity<Playlist> updatePlaylist(
+    public ResponseEntity<PlaylistResponse> updatePlaylist(
             @PathVariable("id") String id, 
-            @RequestBody Playlist playlistDetails, 
+            @Valid @RequestBody PlaylistUpdateRequest updateRequest, 
             @CurrentUser User user,
             @ResolvedResource Playlist playlist) {
         
         try {
             // Update the playlist with new details
-            playlist.setName(playlistDetails.getName());
-            playlist.setDescription(playlistDetails.getDescription());
+            playlist.setName(updateRequest.getName());
+            playlist.setDescription(updateRequest.getDescription());
             
-            // Creating a new playlist with the same ID to replace the old one
-            Playlist updatedPlaylist = playlistService.createPlaylist(
-                    playlist.getName(),
-                    playlist.getDescription(),
-                    user
-            );
+            // Save the updated playlist
+            Playlist updatedPlaylist = playlistService.updatePlaylist(playlist);
             
-            return ResponseEntity.ok(updatedPlaylist);
+            return ResponseEntity.ok(new PlaylistResponse(updatedPlaylist));
         } catch (Exception e) {
+            log.error("Error updating playlist {}: {}", id, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
+    /**
+     * Add a video to a playlist.
+     * Returns success status message.
+     */
     @PostMapping("/{playlistId}/videos/{videoId}")
     @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
     @Loggable(entryMessage = "Add video to playlist", includeParameters = true)
-    public ResponseEntity<?> addVideoToPlaylist(
+    public ResponseEntity<PlaylistVideoAddResponse> addVideoToPlaylist(
             @PathVariable("playlistId") String playlistId, 
             @PathVariable("videoId") String videoId,
             @RequestBody(required = false) PlaylistVideoDetails details,
@@ -131,41 +167,59 @@ public class PlaylistController {
                 return ResponseEntity.notFound().build();
             }
             
-            playlistService.addVideoToPlaylist(playlistId, videoId);
+            Video video = videoOpt.get();
             
-            if (details != null) {
-                Video video = videoOpt.get();
-                if (details.getSeasonNumber() != null) {
-                    video.setSeasonNumber(details.getSeasonNumber());
-                }
-                if (details.getEpisodeNumber() != null) {
-                    video.setEpisodeNumber(details.getEpisodeNumber());
-                }
-                videoService.updateVideo(video);
+            // Check if the user owns the video
+            if (!video.getUploadedBy().getId().equals(user.getId())) {
+                log.warn("User {} attempted to add video {} they don't own to playlist {}", 
+                         user.getUsername(), videoId, playlistId);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
             
-            return ResponseEntity.ok().build();
+            // Add video to playlist
+            playlistService.addVideoToPlaylist(playlistId, videoId, details);
+            
+            PlaylistVideoAddResponse response = new PlaylistVideoAddResponse(
+                playlistId, 
+                videoId, 
+                "Video successfully added to playlist"
+            );
+            
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error adding video to playlist: " + e.getMessage());
-        }
-    }
-
-    @DeleteMapping("/{playlistId}/videos/{videoId}")
-    @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
-    @Loggable(entryMessage = "Remove video from playlist", includeParameters = true)
-    public ResponseEntity<?> removeVideoFromPlaylist(
-            @PathVariable("playlistId") String playlistId, 
-            @PathVariable("videoId") String videoId,
-            @CurrentUser User user) {
-        
-        try {
-            playlistService.removeVideoFromPlaylist(playlistId, videoId);
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        } catch (Exception e) {
+            log.error("Error adding video {} to playlist {}: {}", 
+                      videoId, playlistId, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    /**
+     * Remove a video from a playlist.
+     * Returns success status.
+     */
+    @DeleteMapping("/{playlistId}/videos/{videoId}")
+    @SecuredPlaylistResource(requireWrite = true, idParameter = "playlistId")
+    @Loggable(entryMessage = "Remove video from playlist", includeParameters = true)
+    public ResponseEntity<Void> removeVideoFromPlaylist(
+            @PathVariable("playlistId") String playlistId, 
+            @PathVariable("videoId") String videoId, 
+            @CurrentUser User user,
+            @ResolvedResource Playlist playlist) {
+        
+        try {
+            playlistService.removeVideoFromPlaylist(playlistId, videoId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    /**
+     * Response DTO for playlist video addition
+     */
+    public record PlaylistVideoAddResponse(
+        String playlistId,
+        String videoId,
+        String message
+    ) {}
 }

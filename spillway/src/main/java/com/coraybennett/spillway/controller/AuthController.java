@@ -1,5 +1,7 @@
 package com.coraybennett.spillway.controller;
 
+import jakarta.validation.Valid;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -8,8 +10,10 @@ import com.coraybennett.spillway.annotation.Loggable;
 import com.coraybennett.spillway.annotation.Loggable.LogLevel;
 import com.coraybennett.spillway.dto.AuthRequest;
 import com.coraybennett.spillway.dto.AuthResponse;
+import com.coraybennett.spillway.dto.MessageResponse;
 import com.coraybennett.spillway.dto.RegistrationRequest;
 import com.coraybennett.spillway.dto.RegistrationResponse;
+import com.coraybennett.spillway.dto.ResendConfirmationRequest;
 import com.coraybennett.spillway.service.api.AuthService;
 
 import lombok.RequiredArgsConstructor;
@@ -17,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Controller handling authentication operations.
+ * All endpoints return standardized DTOs.
  */
 @RestController
 @RequestMapping("/auth")
@@ -25,20 +30,29 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthController {
     private final AuthService authService;
 
+    /**
+     * Authenticate a user and return JWT token.
+     * Returns AuthResponse DTO on success.
+     */
     @PostMapping("/login")
     @Loggable(level = LogLevel.INFO, entryMessage = "User login", includeParameters = true)
-    public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest) throws Exception {
+    public ResponseEntity<AuthResponse> createAuthenticationToken(@Valid @RequestBody AuthRequest authRequest) {
         try {
             AuthResponse response = authService.authenticate(authRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Authentication failed: " + e.getMessage());
+            log.error("Authentication failed for user {}: {}", authRequest.getUsername(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
     }
 
+    /**
+     * Register a new user.
+     * Returns RegistrationResponse DTO on success.
+     */
     @PostMapping("/register")
     @Loggable(level = LogLevel.INFO, entryMessage = "User registration", includeParameters = true)
-    public ResponseEntity<?> registerUser(@RequestBody RegistrationRequest registrationRequest) {
+    public ResponseEntity<RegistrationResponse> registerUser(@Valid @RequestBody RegistrationRequest registrationRequest) {
         try {
             RegistrationResponse response = authService.register(
                 registrationRequest.getUsername(), 
@@ -47,48 +61,63 @@ public class AuthController {
             );
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            log.warn("Registration validation failed: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Registration failed: " + e.getMessage());
+            log.error("Registration failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
     
+    /**
+     * Confirm user email address.
+     * Returns MessageResponse DTO with confirmation status.
+     */
     @GetMapping("/confirm")
-    public ResponseEntity<?> confirmEmail(@RequestParam String token) {
+    @Loggable(entryMessage = "Email confirmation", includeParameters = true)
+    public ResponseEntity<MessageResponse> confirmEmail(@RequestParam String token) {
         try {
             boolean confirmed = authService.confirmEmail(token);
             if (confirmed) {
-                return ResponseEntity.ok("Email confirmed successfully. You can now log in.");
+                return ResponseEntity.ok(
+                    MessageResponse.success("Email confirmed successfully. You can now log in.")
+                );
             } else {
-                return ResponseEntity.badRequest().body("Invalid or expired confirmation token");
+                return ResponseEntity.badRequest().body(
+                    MessageResponse.error("Invalid or expired confirmation token")
+                );
             }
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Confirmation failed: " + e.getMessage());
+            log.error("Email confirmation failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                MessageResponse.error("Confirmation failed")
+            );
         }
     }
     
+    /**
+     * Resend email confirmation.
+     * Returns MessageResponse DTO with status.
+     */
     @PostMapping("/resend-confirmation")
-    public ResponseEntity<?> resendConfirmation(@RequestBody ResendConfirmationRequest request) {
+    @Loggable(entryMessage = "Resend confirmation email", includeParameters = true)
+    public ResponseEntity<MessageResponse> resendConfirmation(@Valid @RequestBody ResendConfirmationRequest request) {
         try {
             boolean sent = authService.resendConfirmationEmail(request.getEmail());
             if (sent) {
-                return ResponseEntity.ok("Confirmation email sent");
+                return ResponseEntity.ok(
+                    MessageResponse.success("Confirmation email sent")
+                );
             } else {
-                return ResponseEntity.badRequest().body("Unable to send confirmation email");
+                return ResponseEntity.badRequest().body(
+                    MessageResponse.error("Unable to send confirmation email")
+                );
             }
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to resend confirmation: " + e.getMessage());
+            log.error("Failed to resend confirmation: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                MessageResponse.error("Failed to resend confirmation")
+            );
         }
-    }
-    
-    // DTO class for resend confirmation request
-    public static class ResendConfirmationRequest {
-        private String email;
-        
-        public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
     }
 }

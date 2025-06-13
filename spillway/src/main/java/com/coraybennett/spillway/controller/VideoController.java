@@ -7,6 +7,8 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import jakarta.validation.Valid;
+
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -27,6 +29,9 @@ import com.coraybennett.spillway.annotation.UserAction;
 import com.coraybennett.spillway.annotation.Loggable.LogLevel;
 import com.coraybennett.spillway.annotation.SecuredVideoResource.ResourceHandling;
 import com.coraybennett.spillway.dto.VideoListResponse;
+import com.coraybennett.spillway.dto.VideoMetadataResponse;
+import com.coraybennett.spillway.dto.VideoUpdateRequest;
+import com.coraybennett.spillway.dto.VideoUpdateResponse;
 import com.coraybennett.spillway.model.ConversionStatus;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
@@ -40,7 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Controller handling video-related operations.
- * Updated with enhanced sharing support and standardized logging.
+ * Updated with enhanced sharing support, standardized logging, and DTO responses.
  */
 @RestController
 @RequestMapping("/video")
@@ -52,11 +57,15 @@ public class VideoController {
     private final StorageService storageService;
     private final VideoAccessService videoAccessService;
 
+    /**
+     * Get video metadata including ownership information.
+     * Returns a VideoMetadataResponse DTO with all necessary fields for the frontend.
+     */
     @GetMapping("/{id}")
     @SecuredVideoResource
     @Loggable(entryMessage = "Get video metadata", includeParameters = true)
     @UserAction
-    public ResponseEntity<?> getVideoMetadata(
+    public ResponseEntity<VideoMetadataResponse> getVideoMetadata(
         @PathVariable("id") String id, 
         @ResolvedResource Video video,
         @CurrentUser User user
@@ -67,12 +76,22 @@ public class VideoController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         
-        return ResponseEntity.ok(video);
+        // Load the video with required relationships (uploadedBy and playlist)
+        Video fullVideo = videoRepository.findWithRelationshipsById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Video not found: " + id));
+        
+        VideoMetadataResponse response = new VideoMetadataResponse(fullVideo);
+        return ResponseEntity.ok(response);
     }
 
+    /**
+     * Get video conversion status.
+     * Returns the current conversion progress for a video.
+     */
     @GetMapping("/{id}/status")
     @Loggable(entryMessage = "Get conversion status", includeParameters = true, includeResult = true)
-    public ResponseEntity<?> getConversionStatus(@PathVariable @org.hibernate.validator.constraints.UUID String id) {
+    public ResponseEntity<VideoService.ConversionProgress> getConversionStatus(
+            @PathVariable @org.hibernate.validator.constraints.UUID String id) {
         VideoService.ConversionProgress progress = videoService.getConversionProgress(id);
         if (progress == null) {
             return ResponseEntity.notFound().build();
@@ -80,6 +99,9 @@ public class VideoController {
         return ResponseEntity.ok(progress);
     }
     
+    /**
+     * Get video master playlist for HLS streaming.
+     */
     @GetMapping("/{id}/playlist")
     @Loggable(entryMessage = "Get video master playlist", includeParameters = true)
     @UserAction
@@ -123,6 +145,9 @@ public class VideoController {
         }
     }
 
+    /**
+     * Get video quality-specific playlist.
+     */
     @GetMapping("/{id}/playlist/{quality}")
     @Loggable(entryMessage = "Get video playlist of specific quality", includeParameters = true)
     @SecuredVideoResource
@@ -131,7 +156,7 @@ public class VideoController {
             @ResolvedResource Video video,
             @PathVariable String quality
     ) throws IOException {
-        if (video.getConversionStatus() != com.coraybennett.spillway.model.ConversionStatus.COMPLETED) {
+        if (video.getConversionStatus() != ConversionStatus.COMPLETED) {
             return ResponseEntity.status(HttpStatus.ACCEPTED).build();
         }
 
@@ -165,6 +190,9 @@ public class VideoController {
         }
     }
 
+    /**
+     * Get video segment for HLS streaming.
+     */
     @GetMapping("/{id}/segments/{filename}")
     @SecuredVideoResource(handling = ResourceHandling.VERIFY_ONLY)
     public ResponseEntity<ByteArrayResource> getVideoSegment(
@@ -195,6 +223,10 @@ public class VideoController {
         }
     }
 
+    /**
+     * Get list of videos uploaded by the current user.
+     * Returns a list of VideoListResponse DTOs.
+     */
     @GetMapping("/my-videos")
     @Loggable(entryMessage = "Get user videos", includeParameters = true)
     @UserAction
@@ -207,14 +239,18 @@ public class VideoController {
         return ResponseEntity.ok(videoResponses);
     }
 
+    /**
+     * Update video metadata.
+     * Accepts VideoUpdateRequest DTO and returns VideoUpdateResponse DTO.
+     */
     @PutMapping("/{id}")
     @Loggable(level = LogLevel.INFO, entryMessage = "Update video", includeResult = true)
     @SecuredVideoResource(requireWrite = true)
     @UserAction
-    public ResponseEntity<?> updateVideo(
+    public ResponseEntity<VideoUpdateResponse> updateVideo(
         @PathVariable("id") String id, 
         @ResolvedResource Video video,
-        @RequestBody Video videoDetails, 
+        @Valid @RequestBody VideoUpdateRequest updateRequest, 
         @CurrentUser User user
     ) {
         if (!user.getId().equals(video.getUploadedBy().getId())) {
@@ -223,12 +259,22 @@ public class VideoController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         
-        video.setTitle(videoDetails.getTitle());
-        video.setDescription(videoDetails.getDescription());
-        video.setGenre(videoDetails.getGenre());
+        // Update only the allowed fields
+        video.setTitle(updateRequest.getTitle());
+        video.setDescription(updateRequest.getDescription());
+        video.setGenre(updateRequest.getGenre());
+        
+        // Update episode information if provided
+        if (updateRequest.getSeasonNumber() != null) {
+            video.setSeasonNumber(updateRequest.getSeasonNumber());
+        }
+        if (updateRequest.getEpisodeNumber() != null) {
+            video.setEpisodeNumber(updateRequest.getEpisodeNumber());
+        }
         
         Video updatedVideo = videoRepository.save(video);
         
-        return ResponseEntity.ok(new VideoListResponse(updatedVideo));
+        VideoUpdateResponse response = new VideoUpdateResponse(updatedVideo);
+        return ResponseEntity.ok(response);
     }
 }

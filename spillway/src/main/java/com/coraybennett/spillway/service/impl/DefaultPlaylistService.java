@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.coraybennett.spillway.dto.PlaylistVideoDetails;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
@@ -16,7 +17,7 @@ import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.PlaylistService;
 
 /**
- * Default implementation of PlaylistService.
+ * Default implementation of PlaylistService with enhanced DTO support.
  */
 @Service
 public class DefaultPlaylistService implements PlaylistService {
@@ -39,6 +40,12 @@ public class DefaultPlaylistService implements PlaylistService {
         playlist.setVideos(new ArrayList<>());
         return playlistRepository.save(playlist);
     }
+    
+    @Override
+    @Transactional
+    public Playlist updatePlaylist(Playlist playlist) {
+        return playlistRepository.save(playlist);
+    }
 
     @Override
     public Optional<Playlist> getPlaylistById(String id) {
@@ -57,11 +64,27 @@ public class DefaultPlaylistService implements PlaylistService {
     @Override
     @Transactional
     public Playlist addVideoToPlaylist(String playlistId, String videoId) {
+        return addVideoToPlaylist(playlistId, videoId, null);
+    }
+    
+    @Override
+    @Transactional
+    public Playlist addVideoToPlaylist(String playlistId, String videoId, PlaylistVideoDetails details) {
         Playlist playlist = playlistRepository.findById(playlistId)
                 .orElseThrow(() -> new IllegalArgumentException("Playlist not found: " + playlistId));
         
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new IllegalArgumentException("Video not found: " + videoId));
+        
+        // Apply episode details if provided
+        if (details != null) {
+            if (details.getSeasonNumber() != null) {
+                video.setSeasonNumber(details.getSeasonNumber());
+            }
+            if (details.getEpisodeNumber() != null) {
+                video.setEpisodeNumber(details.getEpisodeNumber());
+            }
+        }
         
         // Avoid duplicates
         if (!playlist.getVideos().contains(video)) {

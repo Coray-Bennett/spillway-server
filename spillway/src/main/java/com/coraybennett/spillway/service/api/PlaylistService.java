@@ -3,6 +3,7 @@ package com.coraybennett.spillway.service.api;
 import java.util.List;
 import java.util.Optional;
 
+import com.coraybennett.spillway.dto.PlaylistVideoDetails;
 import com.coraybennett.spillway.model.Playlist;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
@@ -21,6 +22,14 @@ public interface PlaylistService {
      * @return The created playlist
      */
     Playlist createPlaylist(String name, String description, User user);
+    
+    /**
+     * Updates an existing playlist.
+     * 
+     * @param playlist The playlist to update
+     * @return The updated playlist
+     */
+    Playlist updatePlaylist(Playlist playlist);
     
     /**
      * Retrieves a playlist by its ID.
@@ -46,6 +55,16 @@ public interface PlaylistService {
      * @return Updated playlist
      */
     Playlist addVideoToPlaylist(String playlistId, String videoId);
+    
+    /**
+     * Adds a video to a playlist with additional details.
+     * 
+     * @param playlistId ID of the playlist
+     * @param videoId ID of the video to add
+     * @param details Additional details for episode videos (season/episode numbers)
+     * @return Updated playlist
+     */
+    Playlist addVideoToPlaylist(String playlistId, String videoId, PlaylistVideoDetails details);
     
     /**
      * Removes a video from a playlist.
