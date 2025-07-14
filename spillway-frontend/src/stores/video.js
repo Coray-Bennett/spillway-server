@@ -64,7 +64,7 @@ export const useVideoStore = defineStore('video', {
       }
     },
     
-    async uploadVideoFile(videoId, file) {
+    async uploadVideoFile(videoId, file, encryptionKey) {
       this.isLoading = true
       this.error = null
       this.uploadProgress = 0
@@ -77,7 +77,7 @@ export const useVideoStore = defineStore('video', {
           this.uploadProgress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
         }
         
-        await videoAPI.uploadFile(videoId, formData, onProgress)
+        await videoAPI.uploadFile(videoId, formData, onProgress, encryptionKey)
         
         return { success: true, videoId }
       } catch (error) {

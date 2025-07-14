@@ -108,6 +108,16 @@
                     </option>
                   </select>
                 </div>
+
+                <div class="form-group">
+                  <label for="encrypted" class="form-label">Encrypt Video</label>
+                  <input type="checkbox" class="form-input" id="encrypted" v-model="videoForm.encrypted">
+                  
+                  <div v-show="videoForm.encrypted">
+                    <label for="encryptionKey" class="form-label">Encryption Key</label>
+                    <input id="encryptionKey" type="text" class="form-input" v-model="videoForm.encryptionKey">
+                  </div>
+                </div>
                 
                 <div class="form-group">
                   <label class="form-label">Video File</label>
@@ -225,7 +235,9 @@
     description: '',
     seasonNumber: 1,
     episodeNumber: 1,
-    playlistId: ''
+    playlistId: '',
+    encrypted: false,
+    encryptionKey: null
   })
   
   const playlistForm = ref({
@@ -270,6 +282,7 @@
     successMessage.value = ''
     
     try {
+      console.log(videoForm.value)
       // Create video metadata
       const videoResult = await videoStore.createVideo(videoForm.value)
       
@@ -279,7 +292,7 @@
       }
       
       // Upload video file
-      const uploadResult = await videoStore.uploadVideoFile(videoResult.video.id, selectedFile.value)
+      const uploadResult = await videoStore.uploadVideoFile(videoResult.video.id, selectedFile.value, videoForm.value.encryptionKey)
       
       if (!uploadResult.success) {
         error.value = uploadResult.error

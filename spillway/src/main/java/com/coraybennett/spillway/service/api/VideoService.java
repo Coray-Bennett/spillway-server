@@ -31,9 +31,10 @@ public interface VideoService {
      * 
      * @param videoId ID of the video to associate the file with
      * @param videoFile The multipart file containing the video data
+     * @param encryptionKey optional encryption key for encrypted videos
      * @throws VideoConversionException if there is an issue with the video upload or processing
      */
-    void uploadAndConvertVideo(String videoId, MultipartFile videoFile) 
+    void uploadAndConvertVideo(String videoId, MultipartFile videoFile, String encryptionKey) 
             throws VideoConversionException;
     
     /**

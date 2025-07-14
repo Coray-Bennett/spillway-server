@@ -71,8 +71,12 @@ export const authAPI = {
 export const videoAPI = {
   // Video CRUD
   createMetadata: (metadata) => apiClient.post('/upload/video/metadata', metadata),
-  uploadFile: (videoId, formData, onProgress) => apiClient.post(`/upload/video/${videoId}/file`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+  uploadFile: (videoId, formData, onProgress, encryptionKey) => apiClient.post(`/upload/video/${videoId}/file`, formData, {
+    headers: 
+      { 
+        'Content-Type': 'multipart/form-data',
+        'X-Encryption-Key': encryptionKey
+      },
     onUploadProgress: onProgress
   }),
   getVideo: (videoId) => apiClient.get(`/video/${videoId}`),

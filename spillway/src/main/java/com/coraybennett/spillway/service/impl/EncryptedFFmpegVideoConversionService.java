@@ -22,7 +22,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Primary;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -31,14 +30,13 @@ import com.coraybennett.spillway.model.ConversionStatus;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
-import com.coraybennett.spillway.service.api.VideoConversionService;
 import com.coraybennett.spillway.service.api.VideoEncryptionService;
 
 /**
  * Enhanced FFmpeg-based implementation with encryption support.
  */
 @Service
-@Primary
+// @Primary
 public class EncryptedFFmpegVideoConversionService implements EncryptedVideoConversionService {
     private static final Logger logger = LoggerFactory.getLogger(EncryptedFFmpegVideoConversionService.class);
     

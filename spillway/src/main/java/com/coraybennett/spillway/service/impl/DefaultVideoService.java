@@ -23,9 +23,7 @@ import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.PlaylistRepository;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
-import com.coraybennett.spillway.service.api.TemporaryKeyStorageService;
 import com.coraybennett.spillway.service.api.VideoConversionService;
-import com.coraybennett.spillway.service.api.VideoEncryptionService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 import lombok.extern.slf4j.Slf4j;
@@ -37,12 +35,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DefaultVideoService implements VideoService {
 
-    private final VideoConversionService videoConversionService;
+    private final EncryptedVideoConversionService videoConversionService;
     private final VideoRepository videoRepository;
     private final PlaylistRepository playlistRepository;
     private final StorageService storageService;
-    private final VideoEncryptionService videoEncryptionService;
-    private final TemporaryKeyStorageService temporaryKeyStorage;
     
     @Value("${server.base-url:http://localhost:8081}")
     private String baseUrl;
@@ -52,19 +48,15 @@ public class DefaultVideoService implements VideoService {
 
     @Autowired
     public DefaultVideoService(
-        VideoConversionService videoConversionService, 
+        EncryptedVideoConversionService videoConversionService, 
         VideoRepository videoRepository, 
         PlaylistRepository playlistRepository,
-        StorageService storageService,
-        VideoEncryptionService videoEncryptionService,
-        TemporaryKeyStorageService temporaryKeyStorage
+        StorageService storageService
     ) {
         this.videoConversionService = videoConversionService;
         this.videoRepository = videoRepository;
         this.playlistRepository = playlistRepository;
         this.storageService = storageService;
-        this.videoEncryptionService = videoEncryptionService;
-        this.temporaryKeyStorage = temporaryKeyStorage;
     }
 
     @Override
@@ -84,14 +76,8 @@ public class DefaultVideoService implements VideoService {
         video.setConversionStatus(ConversionStatus.PENDING);
         video.setUploadedBy(user);
         
-        // Handle encryption settings
         if (metadata.isEncrypted()) {
-            if (!videoEncryptionService.isValidKey(metadata.getEncryptionKey())) {
-                throw new IllegalArgumentException("Invalid encryption key provided");
-            }
-            
             video.setEncrypted(true);
-            // Store a hash of the key for validation purposes (never store the actual key)
             video.setEncryptionKeyHash(hashEncryptionKey(metadata.getEncryptionKey()));
             log.info("Video will be encrypted during processing");
         }
@@ -117,7 +103,7 @@ public class DefaultVideoService implements VideoService {
 
     @Override
     @Transactional
-    public void uploadAndConvertVideo(String videoId, MultipartFile videoFile) 
+    public void uploadAndConvertVideo(String videoId, MultipartFile videoFile, String encryptionKey) 
             throws VideoConversionException {
         log.info("Starting video upload and conversion for video ID: {}", videoId);
         
@@ -131,22 +117,13 @@ public class DefaultVideoService implements VideoService {
             video.setConversionStatus(ConversionStatus.IN_PROGRESS);
             videoRepository.save(video);
             
-            // Pass encryption key if video is encrypted
-            String encryptionKey = null;
             if (video.isEncrypted()) {
-                encryptionKey = temporaryKeyStorage.retrieveKey(videoId);
                 if (encryptionKey == null) {
                     throw new VideoConversionException("Encryption key not found for encrypted video");
                 }
             }
             
-            // Modified conversion call to support encryption
-            if (videoConversionService instanceof EncryptedVideoConversionService) {
-                ((EncryptedVideoConversionService) videoConversionService)
-                    .convertToHls(tempFilePath, video, encryptionKey);
-            } else {
-                videoConversionService.convertToHls(tempFilePath, video);
-            }
+            videoConversionService.convertToHls(tempFilePath, video, encryptionKey);
             
             log.info("Video conversion initiated for video ID: {}", videoId);
             
@@ -156,11 +133,6 @@ public class DefaultVideoService implements VideoService {
             video.setConversionError(e.getMessage());
             videoRepository.save(video);
             throw new VideoConversionException("Video conversion failed: " + e.getMessage(), e);
-        } finally {
-            // Clean up temporary encryption key after conversion starts
-            if (video.isEncrypted()) {
-                temporaryKeyStorage.deleteKey(videoId);
-            }
         }
     }
 

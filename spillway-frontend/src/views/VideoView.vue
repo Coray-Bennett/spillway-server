@@ -131,6 +131,7 @@ const showEditModal = ref(false)
 const showSharingModal = ref(false)
 const authStore = useAuthStore()
 const videoStore = useVideoStore()
+const encryptionKey = ref(null)
 
 const isOwner = computed(() => {
   if (!authStore.isAuthenticated || !videoMetadata.value) return false
@@ -161,6 +162,10 @@ async function fetchVideoMetadata() {
   try {
     const data = await videoStore.getVideo(videoId.value)
     videoMetadata.value = data
+
+    if(data?.encrypted) {
+        encryptionKey.value = prompt("Video is encrypted. Enter encryption key:") // browser prompt for now
+    }
     
     // Update playlist URL from metadata if available
     if (data?.playlistUrl) {
@@ -196,7 +201,8 @@ function loadVideo() {
     hls = new Hls({
       debug: true,
       xhrSetup: xhr => {
-        xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`)
+        xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`),
+        xhr.setRequestHeader('X-Decryption-Key', encryptionKey.value)
       }
     })
     

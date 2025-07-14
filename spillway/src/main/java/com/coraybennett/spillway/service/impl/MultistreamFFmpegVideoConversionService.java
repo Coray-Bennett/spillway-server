@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -33,7 +34,7 @@ import com.coraybennett.spillway.model.ConversionStatus;
 import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
-import com.coraybennett.spillway.service.api.VideoConversionService;
+import com.coraybennett.spillway.service.api.VideoEncryptionService;
 import com.coraybennett.spillway.service.enums.QualityLevel;
 
 /**
@@ -42,12 +43,13 @@ import com.coraybennett.spillway.service.enums.QualityLevel;
  * Uses separate FFmpeg processes for each quality level and supports any number of quality levels.
  */
 @Service
-// @Primary
-public class MultistreamFFmpegVideoConversionService implements VideoConversionService {
+@Primary
+public class MultistreamFFmpegVideoConversionService implements EncryptedVideoConversionService {
     private static final Logger logger = LoggerFactory.getLogger(MultistreamFFmpegVideoConversionService.class);
     
     private final VideoRepository videoRepository;
     private final StorageService storageService;
+    private final VideoEncryptionService encryptionService;
     private final Map<String, Process> activeConversions = new ConcurrentHashMap<>();
     
     private final String outputDirectory;
@@ -94,16 +96,25 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
     public MultistreamFFmpegVideoConversionService(
             VideoRepository videoRepository, 
             StorageService storageService,
+            VideoEncryptionService videoEncryptionService,
             @Value("${video.output-directory:content}") String outputDirectory) {
         this.videoRepository = videoRepository;
         this.storageService = storageService;
         this.outputDirectory = outputDirectory;
+        this.encryptionService = videoEncryptionService;
     }
 
     @Override
     @Async("videoConversionExecutor")
     public CompletableFuture<Void> convertToHls(Path sourceFile, Video video) {
+        return convertToHls(sourceFile, video, null);
+    }
+
+    @Override
+    @Async("videoConversionExecutor")
+    public CompletableFuture<Void> convertToHls(Path sourceFile, Video video, String encryptionKey) {
         Path outputPath = null;
+        boolean encrypt = video.isEncrypted() && encryptionKey != null;
         
         try {
             String filename = sourceFile.getFileName().toString();
@@ -114,7 +125,12 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
             video.setConversionStatus(ConversionStatus.IN_PROGRESS);
             videoRepository.save(video);
             
-            outputPath = Paths.get(getOutputDirectory().toString(), video.getId());
+            if(encrypt) {
+                outputPath = Paths.get(getOutputDirectory().toString(), video.getId(), "_temp");
+            } else {
+                outputPath = Paths.get(getOutputDirectory().toString(), video.getId());
+            }
+            
             Files.createDirectories(outputPath);
             
             logger.info("Starting video analysis for video: {}", video.getId());
@@ -147,6 +163,12 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
             video.setConversionStatus(ConversionStatus.COMPLETED);
             video.setConversionProgress(100);
             video.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, video.getId()));
+
+            if(encrypt) {
+                Path finalOutputPath = Paths.get(getOutputDirectory().toString(), video.getId());
+                encryptSegments(outputPath, finalOutputPath, video.getId(), encryptionKey);
+            }
+
             videoRepository.save(video);
             
             logger.info("Completed FFmpeg conversion for video: {}", video.getId());
@@ -155,7 +177,7 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
             
             return CompletableFuture.completedFuture(null);
             
-        } catch (VideoConversionException | IOException | InterruptedException e) {
+        } catch (Exception e) {
             logger.error("Error during video conversion: {}", e.getMessage(), e);
             
             activeConversions.remove(video.getId());
@@ -921,6 +943,36 @@ public class MultistreamFFmpegVideoConversionService implements VideoConversionS
         command.add(quality.maxRate);
         command.add("-bufsize");
         command.add(quality.bufSize);
+    }
+
+        private void encryptSegments(Path tempPath, Path outputPath, String videoId, String encryptionKey) throws Exception {
+        logger.info("Encrypting segments for video: {}", videoId);
+        
+        // Copy and encrypt playlist file
+        Path tempPlaylist = tempPath.resolve(videoId + ".m3u8");
+        Path outputPlaylist = outputPath.resolve(videoId + ".m3u8");
+        Files.copy(tempPlaylist, outputPlaylist);
+        
+        // Find and encrypt all segment files (.ts files)
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(tempPath, "*.ts")) {
+            for (Path segmentFile : stream) {
+                String fileName = segmentFile.getFileName().toString();
+                Path outputSegment = outputPath.resolve(fileName);
+                
+                // Encrypt the segment
+                encryptionService.encryptFile(segmentFile, outputSegment, encryptionKey);
+                logger.debug("Encrypted segment: {}", fileName);
+            }
+        }
+        
+        // Also handle quality-specific playlists if they exist
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(tempPath, "*p.m3u8")) {
+            for (Path qualityPlaylist : stream) {
+                String fileName = qualityPlaylist.getFileName().toString();
+                Path outputQualityPlaylist = outputPath.resolve(fileName);
+                Files.copy(qualityPlaylist, outputQualityPlaylist);
+            }
+        }
     }
     
     /**
