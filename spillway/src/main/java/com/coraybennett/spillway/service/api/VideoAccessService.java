@@ -8,7 +8,6 @@ import org.springframework.data.jpa.domain.Specification;
 
 /**
  * Service for managing video and playlist access permissions.
- * This centralizes access control logic for easy future extension.
  */
 public interface VideoAccessService {
     

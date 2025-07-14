@@ -45,7 +45,6 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Controller handling video-related operations.
- * Updated with enhanced sharing support, standardized logging, and DTO responses.
  */
 @RestController
 @RequestMapping("/video")

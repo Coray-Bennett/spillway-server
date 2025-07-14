@@ -15,7 +15,7 @@ import com.coraybennett.spillway.repository.UserRepository;
 import com.coraybennett.spillway.service.api.UserService;
 
 /**
- * Implements both Spring Security's UserDetailsService and our custom UserService.
+ * Implements both Spring Security's UserDetailsService and a custom UserService.
  */
 @Service
 @Primary

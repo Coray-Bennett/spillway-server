@@ -3,7 +3,7 @@ package com.coraybennett.spillway.service.enums;
 import java.util.Arrays;
 
 /**
- * Enhanced QualityLevel class with better encapsulation and additional utility methods
+ * QualityLevel class for video resolutions (e.g. 1920x1080)
  */
 public class QualityLevel {
     public final String name;

@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Refactored controller handling file upload operations.
+ * Controller handling file upload operations.
  */
 @RestController
 @RequestMapping("/upload")

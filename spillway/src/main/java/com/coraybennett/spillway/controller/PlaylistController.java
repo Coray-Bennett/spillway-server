@@ -32,7 +32,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Controller handling playlist operations using standardized DTOs for all requests and responses.
+ * Controller handling playlist operations.
  */
 @RestController
 @RequestMapping("/playlist")

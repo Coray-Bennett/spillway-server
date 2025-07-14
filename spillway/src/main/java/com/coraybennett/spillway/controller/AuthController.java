@@ -21,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Controller handling authentication operations.
- * All endpoints return standardized DTOs.
  */
 @RestController
 @RequestMapping("/auth")

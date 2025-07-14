@@ -18,7 +18,7 @@ import com.coraybennett.spillway.service.api.SearchService;
 
 import lombok.RequiredArgsConstructor;
 /**
- * Refactored controller handling search and filter operations.
+ * Controller handling search and filter operations.
  * All searches are restricted to content the authenticated user has access to.
  */
 @RestController
