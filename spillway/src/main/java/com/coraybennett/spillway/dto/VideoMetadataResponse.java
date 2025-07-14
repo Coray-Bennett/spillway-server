@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * DTO for returning complete video metadata including ownership information.
+ * DTO for returning complete video metadata including ownership and encryption information.
  * Used by the video metadata endpoint to provide all necessary information
  * for the frontend to render video details and determine ownership.
  */
@@ -28,6 +28,9 @@ public class VideoMetadataResponse {
     private String description;
     private Integer seasonNumber;
     private Integer episodeNumber;
+    
+    // Encryption information
+    private boolean encrypted;
     
     // Ownership information
     private UploadedByInfo uploadedBy;
@@ -74,6 +77,9 @@ public class VideoMetadataResponse {
         this.episodeNumber = video.getEpisodeNumber();
         this.createdAt = video.getCreatedAt();
         this.updatedAt = video.getUpdatedAt();
+        
+        // Set encryption status
+        this.encrypted = video.isEncrypted();
         
         // Set ownership information
         if (video.getUploadedBy() != null) {

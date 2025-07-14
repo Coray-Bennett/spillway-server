@@ -42,7 +42,7 @@ import com.coraybennett.spillway.service.enums.QualityLevel;
  * Uses separate FFmpeg processes for each quality level and supports any number of quality levels.
  */
 @Service
-@Primary
+// @Primary
 public class MultistreamFFmpegVideoConversionService implements VideoConversionService {
     private static final Logger logger = LoggerFactory.getLogger(MultistreamFFmpegVideoConversionService.class);
     

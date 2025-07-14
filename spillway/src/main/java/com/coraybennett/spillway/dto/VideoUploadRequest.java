@@ -17,4 +17,8 @@ public class VideoUploadRequest {
     private Integer seasonNumber;
     private Integer episodeNumber;
     private String playlistId;
+    
+    // New field for encryption
+    private boolean encrypted = false;
+    private String encryptionKey; // Base64 encoded symmetric key provided by client
 }

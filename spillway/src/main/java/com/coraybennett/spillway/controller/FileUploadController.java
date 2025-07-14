@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,13 +22,15 @@ import com.coraybennett.spillway.dto.VideoUploadRequest;
 import com.coraybennett.spillway.exception.VideoConversionException;
 import com.coraybennett.spillway.model.User;
 import com.coraybennett.spillway.model.Video;
+import com.coraybennett.spillway.service.api.TemporaryKeyStorageService;
+import com.coraybennett.spillway.service.api.VideoEncryptionService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Controller handling file upload operations.
+ * Controller handling file upload operations with encryption support.
  */
 @RestController
 @RequestMapping("/upload")
@@ -35,6 +38,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class FileUploadController {
     private final VideoService videoService;
+    private final VideoEncryptionService encryptionService;
+    private final TemporaryKeyStorageService temporaryKeyStorage;
 
     @PostMapping("/video/metadata")
     @UserAction
@@ -44,9 +49,31 @@ public class FileUploadController {
         @CurrentUser User user
     ) {
         try {
+            // Validate encryption key if encryption is requested
+            if (metadata.isEncrypted()) {
+                if (metadata.getEncryptionKey() == null || 
+                    !encryptionService.isValidKey(metadata.getEncryptionKey())) {
+                    log.warn("Invalid or missing encryption key for encrypted video upload");
+                    return ResponseEntity.badRequest()
+                        .body(null);
+                }
+                log.info("Creating encrypted video metadata for user: {}", user.getUsername());
+            }
+            
             VideoResponse response = videoService.createVideo(metadata, user);
+            
+            // Store encryption key temporarily if video is encrypted
+            if (metadata.isEncrypted() && response.getId() != null) {
+                temporaryKeyStorage.storeKey(response.getId(), metadata.getEncryptionKey(), 7200); // 2 hour TTL
+                log.debug("Stored temporary encryption key for video: {}", response.getId());
+            }
+            
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid video metadata: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         } catch (Exception e) {
+            log.error("Failed to create video metadata", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
@@ -58,17 +85,59 @@ public class FileUploadController {
             @PathVariable("videoId") String videoId,
             @RequestParam("file") MultipartFile videoFile,
             @CurrentUser User user,
-            @ResolvedResource Video video
+            @ResolvedResource Video video,
+            @RequestHeader(value = "X-Encryption-Key", required = false) String encryptionKey
     ) {
         try {
+            // If video is encrypted, ensure we have the encryption key
+            if (video.isEncrypted()) {
+                // Try to get key from header first, then from temporary storage
+                String key = encryptionKey;
+                if (key == null) {
+                    key = temporaryKeyStorage.retrieveKey(videoId);
+                }
+                
+                if (key == null) {
+                    log.error("Encryption key not found for encrypted video: {}", videoId);
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("Encryption key required for encrypted video");
+                }
+                
+                // Update the temporary storage with the key for the conversion process
+                temporaryKeyStorage.storeKey(videoId, key, 3600); // 1 hour TTL for conversion
+            }
+            
             videoService.uploadAndConvertVideo(videoId, videoFile);
-            return ResponseEntity.accepted().build();
+            
+            return ResponseEntity.accepted()
+                .header("X-Video-Encrypted", String.valueOf(video.isEncrypted()))
+                .build();
         } catch (VideoConversionException e) {
+            log.error("Video conversion error for {}: {}", videoId, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Error converting video file: " + e.getMessage());
         } catch (Exception e) {
+            log.error("Internal error uploading video {}: {}", videoId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Internal Server Error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Generate a new encryption key for video upload.
+     * This endpoint helps clients generate secure encryption keys.
+     */
+    @PostMapping("/video/generate-encryption-key")
+    @UserAction
+    @Loggable(entryMessage = "Generate encryption key")
+    public ResponseEntity<String> generateEncryptionKey(@CurrentUser User user) {
+        try {
+            String key = encryptionService.generateEncryptionKey();
+            log.info("Generated encryption key for user: {}", user.getUsername());
+            return ResponseEntity.ok(key);
+        } catch (Exception e) {
+            log.error("Failed to generate encryption key", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 }

@@ -1,6 +1,9 @@
 package com.coraybennett.spillway.service.impl;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,14 +23,15 @@ import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.PlaylistRepository;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
+import com.coraybennett.spillway.service.api.TemporaryKeyStorageService;
 import com.coraybennett.spillway.service.api.VideoConversionService;
+import com.coraybennett.spillway.service.api.VideoEncryptionService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Default implementation of VideoService.
- * Updated with Lombok for standardized logging.
+ * Default implementation of VideoService with encryption support.
  */
 @Service
 @Slf4j
@@ -37,6 +41,8 @@ public class DefaultVideoService implements VideoService {
     private final VideoRepository videoRepository;
     private final PlaylistRepository playlistRepository;
     private final StorageService storageService;
+    private final VideoEncryptionService videoEncryptionService;
+    private final TemporaryKeyStorageService temporaryKeyStorage;
     
     @Value("${server.base-url:http://localhost:8081}")
     private String baseUrl;
@@ -49,18 +55,23 @@ public class DefaultVideoService implements VideoService {
         VideoConversionService videoConversionService, 
         VideoRepository videoRepository, 
         PlaylistRepository playlistRepository,
-        StorageService storageService
+        StorageService storageService,
+        VideoEncryptionService videoEncryptionService,
+        TemporaryKeyStorageService temporaryKeyStorage
     ) {
         this.videoConversionService = videoConversionService;
         this.videoRepository = videoRepository;
         this.playlistRepository = playlistRepository;
         this.storageService = storageService;
+        this.videoEncryptionService = videoEncryptionService;
+        this.temporaryKeyStorage = temporaryKeyStorage;
     }
 
     @Override
     @Transactional
     public VideoResponse createVideo(VideoUploadRequest metadata, User user) {
-        log.info("Creating video '{}' for user '{}'", metadata.getTitle(), user.getUsername());
+        log.info("Creating video '{}' for user '{}' (encrypted: {})", 
+            metadata.getTitle(), user.getUsername(), metadata.isEncrypted());
         
         Video video = new Video();
         video.setTitle(metadata.getTitle());
@@ -73,6 +84,18 @@ public class DefaultVideoService implements VideoService {
         video.setConversionStatus(ConversionStatus.PENDING);
         video.setUploadedBy(user);
         
+        // Handle encryption settings
+        if (metadata.isEncrypted()) {
+            if (!videoEncryptionService.isValidKey(metadata.getEncryptionKey())) {
+                throw new IllegalArgumentException("Invalid encryption key provided");
+            }
+            
+            video.setEncrypted(true);
+            // Store a hash of the key for validation purposes (never store the actual key)
+            video.setEncryptionKeyHash(hashEncryptionKey(metadata.getEncryptionKey()));
+            log.info("Video will be encrypted during processing");
+        }
+        
         video.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, "pending"));
         
         if (metadata.getPlaylistId() != null) {
@@ -84,6 +107,8 @@ public class DefaultVideoService implements VideoService {
         Video savedVideo = videoRepository.save(video);
         savedVideo.setPlaylistUrl(String.format("%s/video/%s/playlist", baseUrl, savedVideo.getId()));
         savedVideo = videoRepository.save(savedVideo);
+        
+        // Encryption key is stored by the controller, no need to store here
         
         log.info("Successfully created video with ID: {} for user: {}", 
                  savedVideo.getId(), user.getUsername());
@@ -106,7 +131,23 @@ public class DefaultVideoService implements VideoService {
             video.setConversionStatus(ConversionStatus.IN_PROGRESS);
             videoRepository.save(video);
             
-            videoConversionService.convertToHls(tempFilePath, video);
+            // Pass encryption key if video is encrypted
+            String encryptionKey = null;
+            if (video.isEncrypted()) {
+                encryptionKey = temporaryKeyStorage.retrieveKey(videoId);
+                if (encryptionKey == null) {
+                    throw new VideoConversionException("Encryption key not found for encrypted video");
+                }
+            }
+            
+            // Modified conversion call to support encryption
+            if (videoConversionService instanceof EncryptedVideoConversionService) {
+                ((EncryptedVideoConversionService) videoConversionService)
+                    .convertToHls(tempFilePath, video, encryptionKey);
+            } else {
+                videoConversionService.convertToHls(tempFilePath, video);
+            }
+            
             log.info("Video conversion initiated for video ID: {}", videoId);
             
         } catch (Exception e) {
@@ -115,6 +156,11 @@ public class DefaultVideoService implements VideoService {
             video.setConversionError(e.getMessage());
             videoRepository.save(video);
             throw new VideoConversionException("Video conversion failed: " + e.getMessage(), e);
+        } finally {
+            // Clean up temporary encryption key after conversion starts
+            if (video.isEncrypted()) {
+                temporaryKeyStorage.deleteKey(videoId);
+            }
         }
     }
 
@@ -170,5 +216,19 @@ public class DefaultVideoService implements VideoService {
     @Override
     public VideoConversionService getVideoConversionService() {
         return videoConversionService;
+    }
+    
+    /**
+     * Hashes an encryption key using SHA-256 for storage.
+     * We never store the actual encryption key in the database.
+     */
+    private String hashEncryptionKey(String encryptionKey) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(encryptionKey.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(hash);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to hash encryption key", e);
+        }
     }
 }

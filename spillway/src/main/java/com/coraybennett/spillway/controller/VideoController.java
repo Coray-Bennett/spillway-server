@@ -1,9 +1,12 @@
 package com.coraybennett.spillway.controller;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -16,9 +19,12 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.coraybennett.spillway.annotation.CurrentUser;
@@ -38,13 +44,14 @@ import com.coraybennett.spillway.model.Video;
 import com.coraybennett.spillway.repository.VideoRepository;
 import com.coraybennett.spillway.service.api.StorageService;
 import com.coraybennett.spillway.service.api.VideoAccessService;
+import com.coraybennett.spillway.service.api.VideoEncryptionService;
 import com.coraybennett.spillway.service.api.VideoService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Controller handling video-related operations.
+ * Controller handling video-related operations with encryption support.
  */
 @RestController
 @RequestMapping("/video")
@@ -55,10 +62,10 @@ public class VideoController {
     private final VideoRepository videoRepository;
     private final StorageService storageService;
     private final VideoAccessService videoAccessService;
+    private final VideoEncryptionService videoEncryptionService;
 
     /**
-     * Get video metadata including ownership information.
-     * Returns a VideoMetadataResponse DTO with all necessary fields for the frontend.
+     * Get video metadata including ownership and encryption information.
      */
     @GetMapping("/{id}")
     @SecuredVideoResource
@@ -85,7 +92,6 @@ public class VideoController {
 
     /**
      * Get video conversion status.
-     * Returns the current conversion progress for a video.
      */
     @GetMapping("/{id}/status")
     @Loggable(entryMessage = "Get conversion status", includeParameters = true, includeResult = true)
@@ -100,6 +106,7 @@ public class VideoController {
     
     /**
      * Get video master playlist for HLS streaming.
+     * Encrypted videos require the decryption key in the header.
      */
     @GetMapping("/{id}/playlist")
     @Loggable(entryMessage = "Get video master playlist", includeParameters = true)
@@ -108,7 +115,8 @@ public class VideoController {
     public ResponseEntity<ByteArrayResource> getVideoMasterPlaylist(
         @PathVariable("id") String id,
         @ResolvedResource Video video,
-        @CurrentUser User user
+        @CurrentUser User user,
+        @RequestHeader(value = "X-Decryption-Key", required = false) String decryptionKey
     ) throws IOException {
         if (!videoAccessService.canAccessVideo(video, user)) {
             log.warn("Access denied for playlist {} to user {}", 
@@ -119,6 +127,16 @@ public class VideoController {
         if (video.getConversionStatus() != ConversionStatus.COMPLETED) {
             return ResponseEntity.status(HttpStatus.ACCEPTED).build();
         }
+        
+        // Check if video is encrypted and validate decryption key
+        if (video.isEncrypted()) {
+            if (decryptionKey == null || !validateDecryptionKey(decryptionKey, video)) {
+                log.warn("Invalid or missing decryption key for encrypted video: {}", id);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header("X-Encryption-Required", "true")
+                    .build();
+            }
+        }
 
         String playlistFile = id + ".m3u8";
         Path playlistPath = Paths.get(videoService.getVideoConversionService().getOutputDirectory().toString(), 
@@ -128,6 +146,11 @@ public class VideoController {
         final HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("application/vnd.apple.mpegurl"));
         headers.set("Content-Disposition", "inline;filename=" + playlistFile);
+        
+        // Add header to indicate if video is encrypted
+        if (video.isEncrypted()) {
+            headers.set("X-Encrypted-Content", "true");
+        }
         
         try {
             if (!storageService.exists(playlistPath)) {
@@ -153,10 +176,21 @@ public class VideoController {
     public ResponseEntity<ByteArrayResource> getVideoQualityPlaylist(
             @PathVariable("id") String id,
             @ResolvedResource Video video,
-            @PathVariable String quality
+            @PathVariable String quality,
+            @RequestHeader(value = "X-Decryption-Key", required = false) String decryptionKey
     ) throws IOException {
         if (video.getConversionStatus() != ConversionStatus.COMPLETED) {
             return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+        }
+        
+        // Check if video is encrypted
+        if (video.isEncrypted()) {
+            if (decryptionKey == null || !validateDecryptionKey(decryptionKey, video)) {
+                log.warn("Invalid or missing decryption key for encrypted video: {}", id);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header("X-Encryption-Required", "true")
+                    .build();
+            }
         }
 
         // Validate quality parameter to prevent directory traversal
@@ -172,6 +206,10 @@ public class VideoController {
         final HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("application/vnd.apple.mpegurl"));
         headers.set("Content-Disposition", "inline;filename=" + playlistFile);
+        
+        if (video.isEncrypted()) {
+            headers.set("X-Encrypted-Content", "true");
+        }
         
         try {
             if (!storageService.exists(playlistPath)) {
@@ -191,13 +229,23 @@ public class VideoController {
 
     /**
      * Get video segment for HLS streaming.
+     * Encrypted segments are decrypted on-the-fly if the correct key is provided.
      */
     @GetMapping("/{id}/segments/{filename}")
     @SecuredVideoResource(handling = ResourceHandling.VERIFY_ONLY)
     public ResponseEntity<ByteArrayResource> getVideoSegment(
             @PathVariable("id") String id,
-            @PathVariable String filename
+            @PathVariable String filename,
+            @RequestHeader(value = "X-Decryption-Key", required = false) String decryptionKey
     ) throws IOException {
+        // Get video to check if it's encrypted
+        Video video = videoRepository.findById(id)
+            .orElse(null);
+        
+        if (video == null) {
+            return ResponseEntity.notFound().build();
+        }
+        
         Path segmentPath = Paths.get(videoService.getVideoConversionService().getOutputDirectory().toString(),
                                    id,
                                    filename);
@@ -211,10 +259,33 @@ public class VideoController {
                 return ResponseEntity.notFound().build();
             }
             
-            ByteArrayResource resource = new ByteArrayResource(
-                Files.readAllBytes(segmentPath));
+            byte[] segmentData;
             
+            if (video.isEncrypted()) {
+                // Validate decryption key
+                if (decryptionKey == null || !validateDecryptionKey(decryptionKey, video)) {
+                    log.warn("Invalid or missing decryption key for encrypted segment: {}/{}", id, filename);
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .header("X-Encryption-Required", "true")
+                        .build();
+                }
+                
+                // Decrypt the segment
+                try {
+                    segmentData = videoEncryptionService.decryptFile(segmentPath, decryptionKey);
+                    headers.set("X-Decrypted-Content", "true");
+                } catch (Exception e) {
+                    log.error("Failed to decrypt segment {}/{}: {}", id, filename, e.getMessage());
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+                }
+            } else {
+                // Read unencrypted segment
+                segmentData = Files.readAllBytes(segmentPath);
+            }
+            
+            ByteArrayResource resource = new ByteArrayResource(segmentData);
             return new ResponseEntity<>(resource, headers, HttpStatus.OK);
+            
         } catch (IOException e) {
             log.error("Error reading segment for video {} segment {}: {}", 
                       id, filename, e.getMessage());
@@ -224,7 +295,6 @@ public class VideoController {
 
     /**
      * Get list of videos uploaded by the current user.
-     * Returns a list of VideoListResponse DTOs.
      */
     @GetMapping("/my-videos")
     @Loggable(entryMessage = "Get user videos", includeParameters = true)
@@ -240,7 +310,6 @@ public class VideoController {
 
     /**
      * Update video metadata.
-     * Accepts VideoUpdateRequest DTO and returns VideoUpdateResponse DTO.
      */
     @PutMapping("/{id}")
     @Loggable(level = LogLevel.INFO, entryMessage = "Update video", includeResult = true)
@@ -275,5 +344,57 @@ public class VideoController {
         
         VideoUpdateResponse response = new VideoUpdateResponse(updatedVideo);
         return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * Validate decryption key for an encrypted video.
+     */
+    @PostMapping("/{id}/validate-key")
+    @Loggable(entryMessage = "Validate decryption key", includeParameters = true)
+    @UserAction
+    public ResponseEntity<Boolean> validateDecryptionKey(
+        @PathVariable("id") String id,
+        @RequestBody String decryptionKey,
+        @CurrentUser User user
+    ) {
+        Video video = videoRepository.findById(id).orElse(null);
+        
+        if (video == null) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        if (!videoAccessService.canAccessVideo(video, user)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        if (!video.isEncrypted()) {
+            return ResponseEntity.ok(true);
+        }
+        
+        boolean isValid = validateDecryptionKey(decryptionKey, video);
+        return ResponseEntity.ok(isValid);
+    }
+    
+    /**
+     * Validates a decryption key against the stored hash.
+     */
+    private boolean validateDecryptionKey(String decryptionKey, Video video) {
+        if (!video.isEncrypted() || video.getEncryptionKeyHash() == null) {
+            return true;
+        }
+        
+        if (decryptionKey == null || !videoEncryptionService.isValidKey(decryptionKey)) {
+            return false;
+        }
+        
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(decryptionKey.getBytes(StandardCharsets.UTF_8));
+            String keyHash = Base64.getEncoder().encodeToString(hash);
+            return keyHash.equals(video.getEncryptionKeyHash());
+        } catch (Exception e) {
+            log.error("Failed to validate decryption key", e);
+            return false;
+        }
     }
 }

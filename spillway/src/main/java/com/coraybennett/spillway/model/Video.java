@@ -74,6 +74,12 @@ public class Video {
     @JoinColumn(name = "uploaded_by_user_id", nullable = false)
     @JsonBackReference("user-videos")
     private User uploadedBy;
+    
+    @Column(name = "is_encrypted")
+    private boolean encrypted = false;
+    
+    @Column(name = "encryption_key_hash")
+    private String encryptionKeyHash;
 
     @PrePersist
     protected void onCreate() {
