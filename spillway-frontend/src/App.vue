@@ -52,6 +52,10 @@
             <BaseIcon name="share" :size="16" />
             <span>Shared Videos</span>
           </router-link>
+          <router-link to="/encryption-manager" class="nav-link">
+            <BaseIcon name="key" :size="20" />
+            <span>Encryption Keys</span>
+          </router-link>
           <button @click="handleLogout" class="btn btn-danger nav-btn">
             Logout
           </button>
