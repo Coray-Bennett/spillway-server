@@ -109,13 +109,116 @@
                   </select>
                 </div>
 
-                <div class="form-group">
-                  <label for="encrypted" class="form-label">Encrypt Video</label>
-                  <input type="checkbox" class="form-input" id="encrypted" v-model="videoForm.encrypted">
+                <!-- Enhanced Encryption Section -->
+                <div class="form-group encryption-section">
+                  <div class="encryption-header">
+                    <label class="checkbox-label">
+                      <input 
+                        type="checkbox" 
+                        id="encrypted" 
+                        v-model="videoForm.encrypted"
+                        @change="handleEncryptionToggle"
+                      >
+                      <BaseIcon name="lock" :size="16" />
+                      <span>Encrypt Video</span>
+                    </label>
+                    <button 
+                      v-if="videoForm.encrypted" 
+                      type="button" 
+                      @click="showEncryptionInfo = !showEncryptionInfo"
+                      class="info-toggle-btn"
+                    >
+                      <BaseIcon :name="showEncryptionInfo ? 'chevron-up' : 'chevron-down'" :size="16" />
+                    </button>
+                  </div>
                   
-                  <div v-show="videoForm.encrypted">
-                    <label for="encryptionKey" class="form-label">Encryption Key</label>
-                    <input id="encryptionKey" type="text" class="form-input" v-model="videoForm.encryptionKey">
+                  <div v-if="videoForm.encrypted" class="encryption-content">
+                    <div v-if="showEncryptionInfo" class="encryption-info">
+                      <BaseIcon name="info" :size="16" />
+                      <p>Video encryption protects your content with a secure key. Only users with the key can view the video.</p>
+                    </div>
+
+                    <div class="encryption-options">
+                      <label class="radio-label">
+                        <input 
+                          type="radio" 
+                          v-model="encryptionMode" 
+                          value="auto"
+                          @change="handleEncryptionModeChange"
+                        >
+                        <span>Generate key automatically</span>
+                      </label>
+                      <label class="radio-label">
+                        <input 
+                          type="radio" 
+                          v-model="encryptionMode" 
+                          value="manual"
+                          @change="handleEncryptionModeChange"
+                        >
+                        <span>Enter custom key</span>
+                      </label>
+                    </div>
+
+                    <div v-if="encryptionMode === 'auto'" class="key-display">
+                      <label class="form-label">Generated Encryption Key</label>
+                      <div class="key-display-group">
+                        <input 
+                          :type="showGeneratedKey ? 'text' : 'password'"
+                          :value="videoForm.encryptionKey"
+                          class="form-input key-input"
+                          readonly
+                        >
+                        <button 
+                          type="button" 
+                          @click="showGeneratedKey = !showGeneratedKey"
+                          class="icon-btn"
+                          title="Toggle visibility"
+                        >
+                          <BaseIcon :name="showGeneratedKey ? 'eye-off' : 'eye'" :size="16" />
+                        </button>
+                        <button 
+                          type="button" 
+                          @click="copyKey"
+                          class="icon-btn"
+                          title="Copy key"
+                        >
+                          <BaseIcon name="copy" :size="16" />
+                        </button>
+                        <button 
+                          type="button" 
+                          @click="regenerateKey"
+                          class="icon-btn"
+                          title="Generate new key"
+                        >
+                          <BaseIcon name="refresh" :size="16" />
+                        </button>
+                      </div>
+                      <p class="key-warning">
+                        <BaseIcon name="alert" :size="14" />
+                        Save this key securely! It will be stored locally, but you should keep a backup.
+                      </p>
+                    </div>
+
+                    <div v-if="encryptionMode === 'manual'" class="key-input-section">
+                      <label for="encryptionKey" class="form-label">Custom Encryption Key</label>
+                      <div class="key-input-group">
+                        <input 
+                          id="encryptionKey" 
+                          :type="showManualKey ? 'text' : 'password'" 
+                          class="form-input" 
+                          v-model="videoForm.encryptionKey"
+                          placeholder="Enter your encryption key"
+                        >
+                        <button 
+                          type="button" 
+                          @click="showManualKey = !showManualKey"
+                          class="icon-btn"
+                          title="Toggle visibility"
+                        >
+                          <BaseIcon :name="showManualKey ? 'eye-off' : 'eye'" :size="16" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
@@ -215,6 +318,7 @@
   import { useRouter } from 'vue-router'
   import { useVideoStore } from '../stores/video'
   import BaseIcon from '../components/icons/BaseIcon.vue'
+  import encryptionKeyService from '@/services/encryptionKeyService'
   
   const videoStore = useVideoStore()
   const router = useRouter()
@@ -226,6 +330,12 @@
   const isLoading = ref(false)
   const error = ref('')
   const successMessage = ref('')
+  
+  // Encryption related refs
+  const encryptionMode = ref('auto')
+  const showGeneratedKey = ref(false)
+  const showManualKey = ref(false)
+  const showEncryptionInfo = ref(false)
   
   const videoForm = ref({
     title: '',
@@ -270,10 +380,62 @@
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
+
+  function handleEncryptionToggle() {
+    if (videoForm.value.encrypted && encryptionMode.value === 'auto') {
+      // Generate a new key when encryption is enabled
+      videoForm.value.encryptionKey = encryptionKeyService.generateKey()
+    } else if (!videoForm.value.encrypted) {
+      // Clear the key when encryption is disabled
+      videoForm.value.encryptionKey = null
+      showGeneratedKey.value = false
+      showManualKey.value = false
+    }
+  }
+
+  function handleEncryptionModeChange() {
+    if (encryptionMode.value === 'auto') {
+      // Generate a new key when switching to auto mode
+      videoForm.value.encryptionKey = encryptionKeyService.generateKey()
+    } else {
+      // Clear the key when switching to manual mode
+      videoForm.value.encryptionKey = ''
+    }
+  }
+
+  function regenerateKey() {
+    videoForm.value.encryptionKey = encryptionKeyService.generateKey()
+  }
+
+  async function copyKey() {
+    if (!videoForm.value.encryptionKey) return
+
+    try {
+      await navigator.clipboard.writeText(videoForm.value.encryptionKey)
+      
+      // Show temporary success message
+      const originalSuccess = successMessage.value
+      successMessage.value = 'Encryption key copied to clipboard!'
+      setTimeout(() => {
+        if (successMessage.value === 'Encryption key copied to clipboard!') {
+          successMessage.value = originalSuccess
+        }
+      }, 3000)
+    } catch (err) {
+      console.error('Failed to copy key:', err)
+      error.value = 'Failed to copy encryption key'
+    }
+  }
   
   async function handleVideoUpload() {
     if (!selectedFile.value) {
       error.value = 'Please select a video file'
+      return
+    }
+
+    // Validate encryption key if encryption is enabled
+    if (videoForm.value.encrypted && !videoForm.value.encryptionKey) {
+      error.value = 'Please provide an encryption key'
       return
     }
     
@@ -292,11 +454,20 @@
       }
       
       // Upload video file
-      const uploadResult = await videoStore.uploadVideoFile(videoResult.video.id, selectedFile.value, videoForm.value.encryptionKey)
+      const uploadResult = await videoStore.uploadVideoFile(
+        videoResult.video.id, 
+        selectedFile.value, 
+        videoForm.value.encryptionKey
+      )
       
       if (!uploadResult.success) {
         error.value = uploadResult.error
         return
+      }
+
+      // Store encryption key locally if video is encrypted
+      if (videoForm.value.encrypted && videoForm.value.encryptionKey) {
+        encryptionKeyService.storeKey(videoResult.video.id, videoForm.value.encryptionKey)
       }
       
       successMessage.value = 'Video uploaded successfully! Redirecting...'
@@ -391,6 +562,9 @@
     cursor: pointer;
     transition: var(--transition);
     border-bottom: 2px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
   
   .tab-button.active {
@@ -413,6 +587,142 @@
   .form-group {
     display: flex;
     flex-direction: column;
+  }
+
+  /* Encryption Section Styles */
+  .encryption-section {
+    background-color: var(--tertiary-bg);
+    padding: 1.25rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-color);
+  }
+
+  .encryption-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--primary-text);
+  }
+
+  .checkbox-label input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+  }
+
+  .info-toggle-btn {
+    background: none;
+    border: none;
+    color: var(--secondary-text);
+    cursor: pointer;
+    padding: 0.25rem;
+    transition: var(--transition);
+  }
+
+  .info-toggle-btn:hover {
+    color: var(--primary-text);
+  }
+
+  .encryption-content {
+    margin-top: 1rem;
+  }
+
+  .encryption-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background-color: rgba(59, 130, 246, 0.1);
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    color: var(--accent-color);
+    font-size: 0.875rem;
+  }
+
+  .encryption-info p {
+    margin: 0;
+  }
+
+  .encryption-options {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.9375rem;
+    color: var(--primary-text);
+  }
+
+  .radio-label input[type="radio"] {
+    cursor: pointer;
+  }
+
+  .key-display {
+    margin-top: 1rem;
+  }
+
+  .key-display-group {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .key-input {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.875rem;
+  }
+
+  .key-input-section {
+    margin-top: 1rem;
+  }
+
+  .key-input-group {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .icon-btn {
+    background-color: var(--primary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    color: var(--secondary-text);
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .icon-btn:hover {
+    background-color: var(--hover-bg);
+    color: var(--primary-text);
+  }
+
+  .key-warning {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background-color: rgba(251, 191, 36, 0.1);
+    border-radius: 0.375rem;
+    color: #f59e0b;
+    font-size: 0.8125rem;
+    margin: 0;
   }
   
   .file-upload-area {
@@ -539,6 +849,19 @@
   @media (max-width: 768px) {
     .form-grid {
       grid-template-columns: 1fr;
+    }
+
+    .encryption-options {
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .key-display-group {
+      flex-wrap: wrap;
+    }
+
+    .icon-btn {
+      flex: 0 0 auto;
     }
   }
   </style>

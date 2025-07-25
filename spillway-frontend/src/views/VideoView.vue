@@ -34,6 +34,15 @@
                 Share Video
               </button>
             </div>
+            <!-- Encryption key management button for encrypted videos -->
+            <button 
+              v-if="videoMetadata?.encrypted" 
+              @click="showKeyManagementModal = true" 
+              class="btn btn-outline"
+            >
+              <BaseIcon name="key" :size="16" />
+              Manage Encryption Key
+            </button>
           </div>
           
           <div v-if="videoMetadata" class="video-meta">
@@ -51,6 +60,10 @@
             </span>
             <span v-if="videoMetadata.type === 'EPISODE'" class="meta-item">
               <strong>Episode:</strong> {{ videoMetadata.episodeNumber || 'N/A' }}
+            </span>
+            <span v-if="videoMetadata.encrypted" class="meta-item encrypted-badge">
+              <BaseIcon name="lock" :size="14" />
+              <strong>Encrypted</strong>
             </span>
           </div>
           
@@ -104,6 +117,25 @@
         @close="showSharingModal = false"
         @shared="onVideoShared"
       />
+
+      <!-- Encryption Key Modal -->
+      <EncryptionKeyModal
+        v-if="showEncryptionKeyModal"
+        :video-id="videoId"
+        :video-title="videoMetadata?.title"
+        @close="showEncryptionKeyModal = false"
+        @submit="onEncryptionKeySubmit"
+      />
+
+      <!-- Key Management Modal -->
+      <KeyManagementModal
+        v-if="showKeyManagementModal"
+        :video-id="videoId"
+        :video-title="videoMetadata?.title"
+        :current-key="encryptionKey"
+        @close="showKeyManagementModal = false"
+        @update="onKeyUpdate"
+      />
     </div>
   </div>
 </template>
@@ -119,7 +151,10 @@ import Hls from 'hls.js'
 import VideoEditModal from '../components/VideoEditModal.vue'
 import VideoSharingModal from '../components/VideoSharingModal.vue'
 import PlaylistManager from '../components/PlaylistManager.vue'
+import EncryptionKeyModal from '../components/EncryptionKeyModal.vue'
+import KeyManagementModal from '../components/KeyManagementModal.vue'
 import BaseIcon from '../components/icons/BaseIcon.vue'
+import encryptionKeyService from '@/services/encryptionKeyService'
 
 const route = useRoute()
 const router = useRouter()
@@ -129,6 +164,8 @@ const error = ref('')
 const videoMetadata = ref(null)
 const showEditModal = ref(false)
 const showSharingModal = ref(false)
+const showEncryptionKeyModal = ref(false)
+const showKeyManagementModal = ref(false)
 const authStore = useAuthStore()
 const videoStore = useVideoStore()
 const encryptionKey = ref(null)
@@ -148,6 +185,21 @@ function onVideoShared(share) {
   showSharingModal.value = false
 }
 
+function onEncryptionKeySubmit(key) {
+  encryptionKey.value = key
+  showEncryptionKeyModal.value = false
+  loadVideo()
+}
+
+function onKeyUpdate(newKey) {
+  encryptionKey.value = newKey
+  if (newKey) {
+    encryptionKeyService.storeKey(videoId.value, newKey)
+  }
+  showKeyManagementModal.value = false
+  loadVideo()
+}
+
 let hls = null
 let playlistUrl = ref(`http://localhost:8081/video/${videoId.value}/playlist`)
 
@@ -164,7 +216,16 @@ async function fetchVideoMetadata() {
     videoMetadata.value = data
 
     if(data?.encrypted) {
-        encryptionKey.value = prompt("Video is encrypted. Enter encryption key:") // browser prompt for now
+      // First check if we have a stored key for this video
+      const storedKey = encryptionKeyService.getKey(videoId.value)
+      
+      if (storedKey) {
+        console.log('Found stored encryption key for video')
+        encryptionKey.value = storedKey
+      } else {
+        // Show modal to request encryption key
+        showEncryptionKeyModal.value = true
+      }
     }
     
     // Update playlist URL from metadata if available
@@ -186,6 +247,12 @@ function loadVideo() {
     error.value = 'Video player not found'
     return
   }
+
+  // Check if encrypted video has a key
+  if (videoMetadata.value?.encrypted && !encryptionKey.value) {
+    showEncryptionKeyModal.value = true
+    return
+  }
   
   error.value = ''
   
@@ -201,8 +268,10 @@ function loadVideo() {
     hls = new Hls({
       debug: true,
       xhrSetup: xhr => {
-        xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`),
-        xhr.setRequestHeader('X-Decryption-Key', encryptionKey.value)
+        xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`)
+        if (encryptionKey.value) {
+          xhr.setRequestHeader('X-Decryption-Key', encryptionKey.value)
+        }
       }
     })
     
@@ -218,6 +287,11 @@ function loadVideo() {
       console.error('HLS error:', data)
       if (data.fatal) {
         error.value = `HLS Error: ${data.type} - ${data.details}`
+        
+        // If decryption fails, show key modal
+        if (data.details && data.details.includes('decrypt')) {
+          showEncryptionKeyModal.value = true
+        }
       }
     })
   } else if (videoPlayer.value.canPlayType('application/vnd.apple.mpegurl')) {
@@ -252,7 +326,10 @@ function formatStatus(status) {
 onMounted(async () => {
   await fetchVideoMetadata()
   if (videoMetadata.value?.conversionStatus === 'COMPLETED') {
-    setTimeout(loadVideo, 100)
+    // Auto-load if we have a stored key or video is not encrypted
+    if (!videoMetadata.value.encrypted || encryptionKey.value) {
+      setTimeout(loadVideo, 100)
+    }
   }
 })
 </script>
@@ -351,6 +428,13 @@ onMounted(async () => {
   font-size: 0.9375rem;
 }
 
+.encrypted-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--accent-color);
+}
+
 .video-description,
 .video-info {
   margin-top: 2rem;
@@ -420,6 +504,9 @@ onMounted(async () => {
 
 .video-actions {
   margin-bottom: 2rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .owner-actions {
@@ -491,9 +578,14 @@ onMounted(async () => {
     width: auto;
   }
   
-  .owner-actions {
+  .owner-actions,
+  .video-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .btn {
+    justify-content: center;
   }
 }
 </style>
