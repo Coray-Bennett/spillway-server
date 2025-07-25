@@ -112,24 +112,30 @@
                 <!-- Enhanced Encryption Section -->
                 <div class="form-group encryption-section">
                   <div class="encryption-header">
-                    <label class="checkbox-label">
-                      <input 
-                        type="checkbox" 
-                        id="encrypted" 
-                        v-model="videoForm.encrypted"
-                        @change="handleEncryptionToggle"
+                    <div class="encryption-toggle">
+                      <label class="checkbox-label">
+                        <input 
+                          type="checkbox" 
+                          id="encrypted" 
+                          v-model="videoForm.encrypted"
+                          @change="handleEncryptionToggle"
+                        >
+                        <BaseIcon name="lock" :size="16" />
+                        <span>Encrypt Video</span>
+                      </label>
+                      <button 
+                        v-if="videoForm.encrypted" 
+                        type="button" 
+                        @click="showEncryptionInfo = !showEncryptionInfo"
+                        class="info-toggle-btn"
                       >
-                      <BaseIcon name="lock" :size="16" />
-                      <span>Encrypt Video</span>
-                    </label>
-                    <button 
-                      v-if="videoForm.encrypted" 
-                      type="button" 
-                      @click="showEncryptionInfo = !showEncryptionInfo"
-                      class="info-toggle-btn"
-                    >
-                      <BaseIcon :name="showEncryptionInfo ? 'chevron-up' : 'chevron-down'" :size="16" />
-                    </button>
+                        <BaseIcon :name="showEncryptionInfo ? 'chevron-up' : 'chevron-down'" :size="16" />
+                      </button>
+                    </div>
+                    <router-link to="/encryption-manager" class="key-manager-link">
+                      <BaseIcon name="key" :size="16" />
+                      Manage All Keys
+                    </router-link>
                   </div>
                   
                   <div v-if="videoForm.encrypted" class="encryption-content">
@@ -160,13 +166,24 @@
                     </div>
 
                     <div v-if="encryptionMode === 'auto'" class="key-display">
-                      <label class="form-label">Generated Encryption Key</label>
+                      <div class="key-header">
+                        <label class="form-label">Generated Encryption Key</label>
+                        <button 
+                          type="button" 
+                          @click="exportCurrentKey"
+                          class="export-key-btn"
+                          title="Export this key"
+                        >
+                          <BaseIcon name="download" :size="14" />
+                          Export Key
+                        </button>
+                      </div>
                       <div class="key-display-group">
                         <input 
                           :type="showGeneratedKey ? 'text' : 'password'"
                           :value="videoForm.encryptionKey"
                           class="form-input key-input"
-                          readonly
+                          id="generatedKeyInput"
                         >
                         <button 
                           type="button" 
@@ -427,6 +444,49 @@
     }
   }
   
+  function exportCurrentKey() {
+    if (!videoForm.value.encryptionKey) return
+    
+    try {
+      // Create a single-key JSON object in the same format as the multi-key export
+      const keyData = {
+        key: videoForm.value.encryptionKey,
+        createdAt: new Date().toISOString(),
+        lastUsed: new Date().toISOString()
+      }
+      
+      const keyExport = {
+        "temp-video-id": keyData // Use a temporary ID since we don't have a real video ID yet
+      }
+      
+      // Convert to JSON and create downloadable blob
+      const keysJson = JSON.stringify(keyExport, null, 2)
+      const blob = new Blob([keysJson], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      
+      // Create and trigger download
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `spillway-encryption-key-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      // Show success message
+      const originalSuccess = successMessage.value
+      successMessage.value = 'Encryption key exported successfully!'
+      setTimeout(() => {
+        if (successMessage.value === 'Encryption key exported successfully!') {
+          successMessage.value = originalSuccess
+        }
+      }, 3000)
+    } catch (err) {
+      console.error('Failed to export key:', err)
+      error.value = 'Failed to export encryption key'
+    }
+  }
+  
   async function handleVideoUpload() {
     if (!selectedFile.value) {
       error.value = 'Please select a video file'
@@ -603,6 +663,31 @@
     align-items: center;
   }
 
+  .encryption-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .key-manager-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--accent-color);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    transition: var(--transition);
+    background-color: rgba(59, 130, 246, 0.1);
+  }
+
+  .key-manager-link:hover {
+    background-color: rgba(59, 130, 246, 0.2);
+    text-decoration: none;
+  }
+
   .checkbox-label {
     display: flex;
     align-items: center;
@@ -672,6 +757,32 @@
 
   .key-display {
     margin-top: 1rem;
+  }
+
+  .key-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .export-key-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.8125rem;
+    padding: 0.375rem 0.75rem;
+    background-color: var(--tertiary-bg);
+    color: var(--secondary-text);
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: var(--transition);
+  }
+
+  .export-key-btn:hover {
+    background-color: var(--hover-bg);
+    color: var(--primary-text);
   }
 
   .key-display-group {

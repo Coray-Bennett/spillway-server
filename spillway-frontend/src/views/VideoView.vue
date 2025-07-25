@@ -5,6 +5,25 @@
         <BaseIcon name="error" :size="64" class="error-icon" />
         <h2 class="error-title">Error</h2>
         <p class="error-text">{{ error }}</p>
+        
+        <div v-if="isEncryptionError || isManifestError" class="error-actions">
+          <p class="error-hint">
+            <BaseIcon name="info" :size="16" />
+            This may be due to an incorrect encryption key or permission issue.
+          </p>
+          
+          <div class="error-buttons">
+            <button @click="showEncryptionKeyModal = true" class="btn btn-primary">
+              <BaseIcon name="key" :size="16" />
+              Enter Encryption Key
+            </button>
+            
+            <router-link to="/encryption-manager" class="btn btn-secondary">
+              <BaseIcon name="settings" :size="16" />
+              Manage Keys
+            </router-link>
+          </div>
+        </div>
       </div>
       
       <div v-else class="video-content">
@@ -175,6 +194,25 @@ const isOwner = computed(() => {
   return videoMetadata.value.uploadedBy?.username === authStore.currentUsername
 })
 
+const isEncryptionError = computed(() => {
+  return error.value && (
+    error.value.toLowerCase().includes('decrypt') || 
+    error.value.toLowerCase().includes('encryption') ||
+    error.value.toLowerCase().includes('decryption')
+  )
+})
+
+const isManifestError = computed(() => {
+  return error.value && (
+    error.value.toLowerCase().includes('manifest') ||
+    error.value.toLowerCase().includes('playlist') ||
+    error.value.toLowerCase().includes('403') ||
+    error.value.toLowerCase().includes('401') ||
+    error.value.toLowerCase().includes('forbidden') ||
+    error.value.toLowerCase().includes('unauthorized')
+  )
+})
+
 function onVideoUpdated(updatedVideo) {
   videoMetadata.value = updatedVideo
   showEditModal.value = false
@@ -285,13 +323,33 @@ function loadVideo() {
     
     hls.on(Hls.Events.ERROR, (event, data) => {
       console.error('HLS error:', data)
+      
+      const isEncryptionIssue = 
+        data.details && (
+          data.details.includes('decrypt') || 
+          data.details.includes('key')
+        )
+      
+      const isNetworkIssue = 
+        data.response && (
+          data.response.code === 401 || 
+          data.response.code === 403
+        )
+      
       if (data.fatal) {
-        error.value = `HLS Error: ${data.type} - ${data.details}`
-        
-        // If decryption fails, show key modal
-        if (data.details && data.details.includes('decrypt')) {
+        if (isEncryptionIssue) {
+          error.value = `Decryption Error: The encryption key appears to be incorrect.`
           showEncryptionKeyModal.value = true
+        } else if (isNetworkIssue) {
+          error.value = `Access Error (${data.response.code}): You don't have permission to access this video or the encryption key is incorrect.`
+        } else {
+          error.value = `Playback Error: ${data.type} - ${data.details}`
         }
+      }
+      
+      // Even for non-fatal errors, if it's clearly an encryption issue, show the key modal
+      if (!data.fatal && isEncryptionIssue) {
+        showEncryptionKeyModal.value = true
       }
     })
   } else if (videoPlayer.value.canPlayType('application/vnd.apple.mpegurl')) {
@@ -355,7 +413,7 @@ onMounted(async () => {
 .error-state {
   text-align: center;
   margin: 2rem auto;
-  max-width: 500px;
+  max-width: 600px;
   padding: 2rem;
   background-color: var(--secondary-bg);
   border-radius: 0.75rem;
@@ -365,6 +423,7 @@ onMounted(async () => {
 .error-icon {
   font-size: 3rem;
   margin-bottom: 1rem;
+  color: var(--danger-color);
 }
 
 .error-title {
@@ -375,6 +434,35 @@ onMounted(async () => {
 
 .error-text {
   color: var(--secondary-text);
+  margin-bottom: 1.5rem;
+}
+
+.error-actions {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.error-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--accent-color);
+  margin-bottom: 1.5rem;
+  font-size: 0.9375rem;
+}
+
+.error-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+@media (max-width: 600px) {
+  .error-buttons {
+    flex-direction: column;
+  }
 }
 
 .video-content {

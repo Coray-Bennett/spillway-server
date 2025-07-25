@@ -1,6 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore } from '@/stores/auth'
 import HomeView from '../views/HomeView.vue'
+import VideosView from '../views/VideosView.vue'
+import VideoView from '../views/VideoView.vue'
+import UploadView from '../views/UploadView.vue'
+import PlaylistsView from '../views/PlaylistsView.vue'
+import AuthView from '../views/AuthView.vue'
+import SharedVideosView from '../views/SharedVideosView.vue'
+import EmailConfirmationView from '../views/EmailConfirmationView.vue'
+import EncryptionKeyManager from '../views/EncryptionKeyManager.vue'
+import LoginForm from '../components/LoginForm.vue'
+import RegisterForm from '../components/RegisterForm.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -11,71 +21,81 @@ const router = createRouter({
       component: HomeView
     },
     {
-      path: '/auth',
-      component: () => import('../views/AuthView.vue'),
-      children: [
-        {
-          path: 'login',
-          name: 'login',
-          component: () => import('../components/LoginForm.vue')
-        },
-        {
-          path: 'register',
-          name: 'register',
-          component: () => import('../components/RegisterForm.vue')
-        }
-      ]
-    },
-    {
-      path: '/confirm-email',
-      name: 'confirm-email',
-      component: () => import('../views/EmailConfirmationView.vue')
-    },
-    {
-      path: '/upload',
-      name: 'upload',
-      component: () => import('../views/UploadView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
       path: '/videos',
       name: 'videos',
-      component: () => import('../views/VideosView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/playlists',
-      name: 'playlists',
-      component: () => import('../views/PlaylistsView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/shared',
-      name: 'shared-videos',
-      component: () => import('../views/SharedVideosView.vue'),
+      component: VideosView,
       meta: { requiresAuth: true }
     },
     {
       path: '/video/:id',
       name: 'video',
-      component: () => import('../views/VideoView.vue'),
+      component: VideoView,
+      props: true
+    },
+    {
+      path: '/upload',
+      name: 'upload',
+      component: UploadView,
       meta: { requiresAuth: true }
     },
     {
-      path: '/:pathMatch(.*)*',
-      redirect: '/'
+      path: '/playlists',
+      name: 'playlists',
+      component: PlaylistsView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/auth',
+      component: AuthView,
+      children: [
+        {
+          path: 'login',
+          name: 'login',
+          component: LoginForm
+        },
+        {
+          path: 'register',
+          name: 'register',
+          component: RegisterForm
+        }
+      ]
+    },
+    {
+      path: '/shared',
+      name: 'shared',
+      component: SharedVideosView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/confirm-email',
+      name: 'confirm-email',
+      component: EmailConfirmationView
+    },
+    {
+      path: '/encryption-manager',
+      name: 'encryption-manager',
+      component: EncryptionKeyManager,
+      meta: { requiresAuth: true }
     }
   ]
 })
 
+// Navigation guard to check auth state
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
   
+  // If the route requires authentication and user is not logged in
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next('/auth/login')
-  } else {
-    next()
+    return next({ name: 'auth', query: { redirect: to.fullPath } })
   }
+  
+  // If the route is for guests only and user is logged in
+  if (to.meta.guestOnly && authStore.isAuthenticated) {
+    return next({ name: 'home' })
+  }
+  
+  // Otherwise proceed normally
+  next()
 })
 
 export default router

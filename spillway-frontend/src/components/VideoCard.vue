@@ -1,356 +1,367 @@
 <template>
-  <div 
-    class="video-card" 
-    :class="{ 
-      'processing': isProcessing, 
-      'failed': isFailed,
-      'video-card--with-actions': showActions,
-      'video-card--compact': compact
-    }"
-    @click="$emit('select', video)"
-  >
+  <div class="video-card" @click="navigateToVideo">
     <div class="video-thumbnail">
-      <img v-if="video.thumbnailUrl" :src="video.thumbnailUrl" :alt="video.title">
-      <div v-else class="placeholder-thumbnail">
-        <BaseIcon name="video" :size="24" />
+      <div class="thumbnail-overlay">
+        <BaseIcon name="play" :size="48" class="play-icon" />
       </div>
       
-      <!-- Status overlays -->
-      <div v-if="isProcessing" class="processing-overlay">
-        <LoadingSpinner :size="1.5" color="white" />
-        <span>Processing</span>
+      <!-- Status Badge -->
+      <div 
+        v-if="video.conversionStatus" 
+        :class="['status-badge', video.conversionStatus.toLowerCase()]"
+        title="Video Status"
+      >
+        {{ formatStatus(video.conversionStatus) }}
       </div>
       
-      <div v-else-if="isFailed" class="failed-overlay">
-        <BaseIcon name="error" :size="28" />
-        <span>Processing Failed</span>
-      </div>
-      
-      <div v-else-if="video.duration" class="duration-badge">
-        {{ formatDuration(video.duration) }}
+      <!-- Encrypted Badge -->
+      <div 
+        v-if="video.encrypted"
+        class="encrypted-badge"
+        title="Encrypted Video"
+        @click.stop="handleEncryptionClick"
+      >
+        <BaseIcon name="lock" :size="16" />
       </div>
     </div>
     
     <div class="video-info">
-      <h3 class="video-title" :title="video.title">
-        {{ video.title }}
-      </h3>
+      <h3 class="video-title">{{ video.title }}</h3>
       
       <div class="video-meta">
-        <div class="video-meta-item" v-if="video.genre">
+        <div class="meta-item">
+          <BaseIcon name="clock" :size="14" />
+          <span>{{ formatDuration(video.length) }}</span>
+        </div>
+        
+        <div v-if="video.type === 'EPISODE'" class="meta-item">
+          <BaseIcon name="film" :size="14" />
+          <span>S{{ video.seasonNumber || '?' }}:E{{ video.episodeNumber || '?' }}</span>
+        </div>
+        
+        <div v-if="video.genre" class="meta-item">
           <BaseIcon name="tag" :size="14" />
-          <span class="video-genre">{{ video.genre }}</span>
-        </div>
-        
-        <div class="video-meta-item" v-if="showUploader && video.uploadedBy">
-          <BaseIcon name="user" :size="14" />
-          <span class="video-uploader">{{ video.uploadedBy.username || 'Unknown' }}</span>
-        </div>
-        
-        <div class="video-meta-item" v-if="video.createdAt && !isProcessing && !isFailed">
-          <BaseIcon name="calendar" :size="14" />
-          <span class="video-date">{{ formatDate(video.createdAt) }}</span>
-        </div>
-        
-        <div class="video-meta-item" v-if="video.views !== undefined">
-          <BaseIcon name="eye" :size="14" />
-          <span class="video-views">{{ formatViewCount(video.views) }}</span>
+          <span>{{ video.genre }}</span>
         </div>
       </div>
       
-      <p v-if="showDescription && video.description" class="video-description">
-        {{ truncateDescription(video.description) }}
-      </p>
-      
-      <div v-if="showActions && !compact" class="video-actions">
-        <slot name="actions"></slot>
+      <div class="video-details">
+        <span class="upload-date">
+          {{ formatDate(video.createdAt) }}
+        </span>
+        
+        <div class="video-actions">
+          <button 
+            v-if="video.encrypted"
+            @click.stop="showManageKeyModal"
+            class="action-button"
+            title="Manage Encryption Key"
+          >
+            <BaseIcon name="key" :size="16" />
+          </button>
+          <button 
+            v-if="isOwner"
+            @click.stop="navigateToEditVideo"
+            class="action-button"
+            title="Edit Video"
+          >
+            <BaseIcon name="edit" :size="16" />
+          </button>
+          <button 
+            @click.stop="$emit('play', video)"
+            class="action-button"
+            title="Play Video"
+          >
+            <BaseIcon name="play" :size="16" />
+          </button>
+        </div>
       </div>
     </div>
     
-    <div v-if="showActions && compact" class="compact-actions">
-      <slot name="actions"></slot>
-    </div>
+    <!-- Key Management Modal -->
+    <KeyManagementModal
+      v-if="showKeyModal"
+      :video-id="video.id"
+      :video-title="video.title"
+      :current-key="encryptionKey"
+      @close="showKeyModal = false"
+      @update="onKeyUpdate"
+    />
+    
+    <!-- Encryption Key Modal -->
+    <EncryptionKeyModal
+      v-if="showKeyEntryModal"
+      :video-id="video.id"
+      :video-title="video.title"
+      @close="showKeyEntryModal = false"
+      @submit="onEncryptionKeySubmit"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { useVideoStore } from '@/stores/video'
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/date'
 import { formatDuration } from '@/utils/metadata'
-import BaseIcon from './icons/BaseIcon.vue'
-import LoadingSpinner from './common/LoadingSpinner.vue'
-import AppButton from './common/AppButton.vue'
+import BaseIcon from '@/components/icons/BaseIcon.vue'
+import KeyManagementModal from '@/components/KeyManagementModal.vue'
+import EncryptionKeyModal from '@/components/EncryptionKeyModal.vue'
+import encryptionKeyService from '@/services/encryptionKeyService'
 
 const props = defineProps({
   video: {
     type: Object,
     required: true
-  },
-  showActions: {
-    type: Boolean,
-    default: false
-  },
-  showDescription: {
-    type: Boolean,
-    default: false
-  },
-  showUploader: {
-    type: Boolean,
-    default: true
-  },
-  descriptionLength: {
-    type: Number,
-    default: 120
-  },
-  compact: {
-    type: Boolean,
-    default: false
   }
 })
 
-defineEmits(['select', 'play'])
+const emit = defineEmits(['play', 'keyUpdated'])
 
-const videoStore = useVideoStore()
+const router = useRouter()
+const authStore = useAuthStore()
+const showKeyModal = ref(false)
+const showKeyEntryModal = ref(false)
+const encryptionKey = ref(null)
 
-// Computed properties for video status
-const isProcessing = computed(() => videoStore.isVideoProcessing(props.video))
-const isFailed = computed(() => videoStore.isVideoFailed(props.video))
+const isOwner = computed(() => {
+  return authStore.currentUsername === props.video.uploadedBy?.username
+})
 
-// Helper methods
-function truncateDescription(text) {
-  if (!text) return ''
-  return text.length > props.descriptionLength 
-    ? text.slice(0, props.descriptionLength) + '...' 
-    : text
+function formatStatus(status) {
+  if (!status) return 'Unknown'
+  const statusMap = {
+    'PENDING': 'Pending',
+    'IN_PROGRESS': 'Converting',
+    'COMPLETED': 'Ready',
+    'FAILED': 'Failed'
+  }
+  return statusMap[status] || status
 }
 
-function formatViewCount(views) {
-  if (views === undefined || views === null) return '0 views'
-  
-  if (views < 1000) return `${views} view${views === 1 ? '' : 's'}`
-  if (views < 1000000) return `${(views / 1000).toFixed(1)}K views`
-  return `${(views / 1000000).toFixed(1)}M views`
+function navigateToVideo() {
+  router.push(`/video/${props.video.id}`)
+}
+
+function navigateToEditVideo() {
+  // This would typically open an edit modal or navigate to an edit page
+  router.push(`/video/${props.video.id}?edit=true`)
+}
+
+function showManageKeyModal() {
+  // Check if we have a stored key
+  const storedKey = encryptionKeyService.getKey(props.video.id)
+  encryptionKey.value = storedKey
+  showKeyModal.value = true
+}
+
+function handleEncryptionClick() {
+  const hasKey = encryptionKeyService.hasKey(props.video.id)
+  if (hasKey) {
+    showManageKeyModal()
+  } else {
+    showKeyEntryModal.value = true
+  }
+}
+
+function onEncryptionKeySubmit(key) {
+  encryptionKey.value = key
+  encryptionKeyService.storeKey(props.video.id, key)
+  showKeyEntryModal.value = false
+  emit('keyUpdated', { videoId: props.video.id, key })
+}
+
+function onKeyUpdate(newKey) {
+  encryptionKey.value = newKey
+  if (newKey) {
+    encryptionKeyService.storeKey(props.video.id, newKey)
+  } else {
+    encryptionKeyService.removeKey(props.video.id)
+  }
+  showKeyModal.value = false
+  emit('keyUpdated', { videoId: props.video.id, key: newKey })
 }
 </script>
 
 <style scoped>
 .video-card {
+  background-color: var(--secondary-bg);
+  border-radius: 0.75rem;
   overflow: hidden;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   transition: transform 0.2s, box-shadow 0.2s;
-  background-color: var(--card-bg, #2a2a2a);
   cursor: pointer;
   display: flex;
   flex-direction: column;
 }
 
 .video-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-}
-
-.video-card--compact {
-  flex-direction: row;
-  align-items: center;
-}
-
-.video-card--compact .video-thumbnail {
-  width: 180px;
-  height: 100px;
-  flex-shrink: 0;
-}
-
-.video-card--compact .video-info {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.video-card.processing {
-  opacity: 0.8;
-}
-
-.video-card.failed {
-  opacity: 0.7;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .video-thumbnail {
   position: relative;
-  padding-top: 56.25%; /* 16:9 Aspect Ratio */
-  background-color: var(--bg-secondary, #222);
+  padding-top: 56.25%; /* 16:9 aspect ratio */
+  background-color: #000;
+  overflow: hidden;
 }
 
-.video-card--compact .video-thumbnail {
-  padding-top: 0;
-}
-
-.video-thumbnail img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.video-card--compact .video-thumbnail img {
-  position: relative;
-}
-
-.placeholder-thumbnail {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--bg-tertiary, #333);
-  color: var(--text-muted, #999);
-}
-
-.video-card--compact .placeholder-thumbnail {
-  position: relative;
-  height: 100px;
-}
-
-.duration-badge {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background-color: rgba(0,0,0,0.7);
-  color: white;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  font-weight: bold;
-}
-
-.thumbnail-actions {
+.thumbnail-overlay {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
+  background: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.7));
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5);
   opacity: 0;
   transition: opacity 0.2s;
 }
 
-.video-card:hover .thumbnail-actions {
+.video-card:hover .thumbnail-overlay {
   opacity: 1;
 }
 
-.play-btn {
-  transform: scale(0.9);
+.play-icon {
+  color: white;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   transition: transform 0.2s;
 }
 
-.video-card:hover .play-btn {
-  transform: scale(1);
+.video-card:hover .play-icon {
+  transform: scale(1.1);
 }
 
-.processing-overlay,
-.failed-overlay {
+.status-badge {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(0,0,0,0.5);
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: lowercase;
   color: white;
 }
 
-.failed-overlay {
-  background-color: rgba(200,0,0,0.5);
+.status-badge.pending {
+  background-color: #94a3b8;
+}
+
+.status-badge.in_progress {
+  background-color: var(--accent-color);
+}
+
+.status-badge.completed {
+  background-color: var(--success-color);
+}
+
+.status-badge.failed {
+  background-color: var(--danger-color);
+}
+
+.encrypted-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: var(--accent-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.encrypted-badge:hover {
+  background-color: rgba(59, 130, 246, 0.8);
+  color: white;
+  transform: scale(1.1);
 }
 
 .video-info {
-  padding: 12px;
+  padding: 1rem;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  flex-grow: 1;
 }
 
 .video-title {
-  font-size: 0.95rem;
-  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem 0;
+  color: var(--primary-text);
   display: -webkit-box;
-  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text-primary, #e0e0e0);
-  line-height: 1.3;
-}
-
-.video-card--compact .video-title {
-  line-clamp: 1;
-  -webkit-line-clamp: 1;
-  margin-bottom: 6px;
+  line-height: 1.4;
 }
 
 .video-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 8px;
-  font-size: 0.75rem;
-  color: var(--text-secondary, #b0b0b0);
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
-.video-meta-item {
+.meta-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
+  color: var(--secondary-text);
+  font-size: 0.75rem;
 }
 
-.video-description {
-  font-size: 0.85rem;
-  color: var(--text-secondary, #b0b0b0);
-  line-height: 1.4;
-  margin: 0 0 12px;
-}
-
-.video-actions,
-.compact-actions {
-  display: flex;
-  gap: 8px;
+.video-details {
   margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.video-card--with-actions:hover {
-  background-color: var(--card-hover-bg, #323232);
+.upload-date {
+  color: var(--secondary-text);
+  font-size: 0.75rem;
+}
+
+.video-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-button {
+  background: none;
+  border: none;
+  color: var(--secondary-text);
+  padding: 0.375rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-button:hover {
+  background-color: var(--hover-bg);
+  color: var(--primary-text);
+}
+
+.action-button:first-child {
+  color: var(--accent-color);
 }
 
 @media (max-width: 640px) {
-  .video-card--compact {
+  .video-meta {
     flex-direction: column;
-  }
-  
-  .video-card--compact .video-thumbnail {
-    width: 100%;
-    padding-top: 56.25%;
-  }
-  
-  .video-card--compact .video-thumbnail img {
-    position: absolute;
-  }
-  
-  .video-card--compact .placeholder-thumbnail {
-    position: absolute;
-    height: 100%;
+    gap: 0.375rem;
   }
 }
 </style>
