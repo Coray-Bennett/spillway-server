@@ -54,7 +54,6 @@ public class DefaultVideoEncryptionService implements VideoEncryptionService {
         SecretKey secretKey = getSecretKey(encryptionKey);
         Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         
-        // Generate random IV
         byte[] iv = new byte[GCM_IV_LENGTH];
         SecureRandom random = new SecureRandom();
         random.nextBytes(iv);
@@ -62,13 +61,11 @@ public class DefaultVideoEncryptionService implements VideoEncryptionService {
         GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec);
         
-        // Ensure output directory exists
         Files.createDirectories(outputPath.getParent());
         
         try (FileInputStream fis = new FileInputStream(inputPath.toFile());
              FileOutputStream fos = new FileOutputStream(outputPath.toFile())) {
             
-            // Write IV to the beginning of the file
             fos.write(iv);
             
             // Encrypt the file content
@@ -161,7 +158,6 @@ public class DefaultVideoEncryptionService implements VideoEncryptionService {
         
         try {
             byte[] keyBytes = Base64.getDecoder().decode(encryptionKey);
-            // AES-256 key should be 32 bytes
             return keyBytes.length == KEY_SIZE / 8;
         } catch (IllegalArgumentException e) {
             log.debug("Invalid base64 encoding for key", e);
